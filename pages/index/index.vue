@@ -49,78 +49,132 @@ const UPLOAD_URL = 'https://your-backend-api.com/analyze-bultrasound';
 
 // 响应式数据
 const imageUrl = ref('');
-const analysisResult = ref(null);
-const isLoading = ref(false);
+const ocrResult = ref('');
+const analysisResult = ref('');
+const uploadStatus = ref('');
 
-/**
- * 封装的图片上传和分析函数
- * @param {string} filePath - 图片的临时文件路径
- */
-const analyzeImage = async (filePath) => {
-	try {
-		const uploadResponse = await uni.uploadFile({
-			url: UPLOAD_URL,
-			filePath: filePath,
-			name: 'imageFile',
-			timeout: 60000,
-		});
+// 选择文件
+const chooseImage = async () => {
+  try {
+    uploadStatus.value = '选择文件中...';
+    
+    const res = await uni.chooseImage({
+      count: 1,
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed']
+    });
+    
+    const filePath = res.tempFilePaths[0];
+    imageUrl.value = filePath;
 
-		const data = JSON.parse(uploadResponse.data);
-		
-		if (data.code !== 200) {
-			throw new Error(data.message || '图片分析失败，请稍后重试。');
-		}
+    // 获取文件扩展名和内容类型
+    const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+    let contentType = 'application/octet-stream';
+    if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+    else if (ext === '.png') contentType = 'image/png';
+    else if (ext === '.gif') contentType = 'image/gif';
+    else if (ext === '.bmp') contentType = 'image/bmp';
+    else if (ext === '.webp') contentType = 'image/webp';
+    else if (ext === '.avif') contentType = 'image/avif';
 
-		analysisResult.value = data.data;
-
-	} catch (err) {
-		console.error('分析失败:', err);
-		uni.showToast({
-			title: err.message || '图片上传或分析过程中出现错误',
-			icon: 'none',
-			duration: 3000
-		});
-		analysisResult.value = null;
-	}
+    // 将contentType传递给uploadFile
+    await uploadFile(filePath, contentType, ext);
+  } catch (err) {
+    console.error('选择文件失败:', err);
+    uploadStatus.value = '选择文件失败';
+    uni.showToast({
+      title: '选择文件失败',
+      icon: 'none'
+    });
+  }
 };
 
-/**
- * 选择图片并触发分析流程
- */
-const chooseImage = async () => {
-	if (isLoading.value) return;
-	
-	try {
-		const res = await uni.chooseImage({
-			count: 1,
-			sourceType: ['album', 'camera'],
-			sizeType: ['compressed']
-		});
-		
-		const tempFilePath = res.tempFilePaths?.[0];
-		if (!tempFilePath) return;
+// 修改uploadFile函数签名，添加contentType参数
+const uploadFile = async (filePath, contentType, ext = '.jpg') => {
+  try {
+    uploadStatus.value = '上传中...';
+    ocrResult.value = '';
+    analysisResult.value = '';
 
-		imageUrl.value = tempFilePath;
-		analysisResult.value = null;
+    const fileName = `score_${Date.now()}${ext}`;
+    
+    // 正确读取文件为ArrayBuffer
+    const fileContent = await readFileAsArrayBuffer(filePath);
 
-		isLoading.value = true;
-		uni.showLoading({
-			title: '正在智能分析...',
-			mask: true
-		});
+    const apiUrl = `https://apps.hundao.xyz/rendered/${fileName}`;
+    
+    // 使用uni.uploadFile API而不是uni.request
+    const uploadTask = uni.uploadFile({
+      url: apiUrl,
+      filePath: filePath, // 直接使用文件路径
+      name: 'file',
+      fileType: 'image',
+      formData: {
+        'filename': fileName
+      },
+      header: {
+        'Content-Type': contentType,
+      },
+      success: (uploadRes) => {
+        if (uploadRes.statusCode === 200) {
+          uploadStatus.value = '上传成功，正在识别...';
+          
+          // 模拟OCR处理
+          setTimeout(() => {
+            const mockServerResponse = {
+              ocrText: `科目\t成绩\n数学\t92\n语文\t88\n英语\t95\n物理\t85\n化学\t90`,
+              analysis: {
+                total: 450,
+                average: 90,
+                bestSubject: '英语',
+                bestScore: 95,
+                evaluation: '成绩优秀！'
+              }
+            };
+            
+            ocrResult.value = mockServerResponse.ocrText;
+            analysisResult.value = `分析完成：
+平均分：${mockServerResponse.analysis.average}
+总分：${mockServerResponse.analysis.total}
+最佳科目：${mockServerResponse.analysis.bestSubject}（${mockServerResponse.analysis.bestScore}分）
+${mockServerResponse.analysis.evaluation}`;
+            
+            uploadStatus.value = '识别完成';
+          }, 2000);
+        } else {
+          throw new Error(`上传失败，状态码: ${uploadRes.statusCode}`);
+        }
+      },
+      fail: (err) => {
+        throw new Error(`上传失败: ${err.errMsg}`);
+      }
+    });
+    
+    // 监听上传进度
+    uploadTask.onProgressUpdate((res) => {
+      uploadStatus.value = `上传中 ${res.progress}%`;
+    });
+    
+  } catch (err) {
+    console.error('上传失败:', err);
+    uploadStatus.value = '上传失败: ' + err.message;
+    uni.showToast({
+      title: '上传失败',
+      icon: 'none'
+    });
+  }
+};
 
-		await analyzeImage(tempFilePath);
-
-	} catch (err) {
-		console.error('选择图片失败:', err);
-		uni.showToast({
-			title: '取消选择或发生错误',
-			icon: 'none'
-		});
-	} finally {
-		isLoading.value = false;
-		uni.hideLoading();
-	}
+// 读取文件为ArrayBuffer
+const readFileAsArrayBuffer = (filePath) => {
+  return new Promise((resolve, reject) => {
+    uni.getFileSystemManager().readFile({
+      filePath,
+      // 不指定encoding，直接返回ArrayBuffer
+      success: (res) => resolve(res.data),
+      fail: reject
+    });
+  });
 };
 </script>
 
@@ -271,5 +325,12 @@ const chooseImage = async () => {
 
 .risk-high {
 	color: #e74c3c;
+}
+
+.status-message {
+  color: #007AFF;
+  font-size: 14px;
+  text-align: center;
+  margin-bottom: 10px;
 }
 </style>
