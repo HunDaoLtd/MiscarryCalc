@@ -44,9 +44,6 @@
 <script setup>
 import { ref } from 'vue';
 
-// 定义后端API地址
-const UPLOAD_URL = 'https://your-backend-api.com/analyze-bultrasound';
-
 // 响应式数据
 const imageUrl = ref('');
 const ocrResult = ref('');
@@ -54,7 +51,7 @@ const analysisResult = ref('');
 const uploadStatus = ref('');
 
 // 选择文件
-const chooseImage = async () => {
+async function chooseImage() {
   try {
     uploadStatus.value = '选择文件中...';
     
@@ -89,70 +86,47 @@ const chooseImage = async () => {
   }
 };
 
-// 修改uploadFile函数签名，添加contentType参数
-const uploadFile = async (filePath, contentType, ext = '.jpg') => {
+// 文件上传函数
+async function uploadFile(filePath, contentType, ext) {
+  if (!ext) ext = '.jpg'; // 设置默认扩展名
   try {
     uploadStatus.value = '上传中...';
     ocrResult.value = '';
     analysisResult.value = '';
 
     const fileName = `score_${Date.now()}${ext}`;
-    
-    // 正确读取文件为ArrayBuffer
-    const fileContent = await readFileAsArrayBuffer(filePath);
-
     const apiUrl = `https://apps.hundao.xyz/rendered/${fileName}`;
     
-    // 使用uni.uploadFile API而不是uni.request
-    const uploadTask = uni.uploadFile({
-      url: apiUrl,
-      filePath: filePath, // 直接使用文件路径
-      name: 'file',
-      fileType: 'image',
-      formData: {
-        'filename': fileName
-      },
-      header: {
-        'Content-Type': contentType,
-      },
-      success: (uploadRes) => {
-        if (uploadRes.statusCode === 200) {
-          uploadStatus.value = '上传成功，正在识别...';
-          
-          // 模拟OCR处理
-          setTimeout(() => {
-            const mockServerResponse = {
-              ocrText: `科目\t成绩\n数学\t92\n语文\t88\n英语\t95\n物理\t85\n化学\t90`,
-              analysis: {
-                total: 450,
-                average: 90,
-                bestSubject: '英语',
-                bestScore: 95,
-                evaluation: '成绩优秀！'
-              }
-            };
-            
-            ocrResult.value = mockServerResponse.ocrText;
-            analysisResult.value = `分析完成：
-平均分：${mockServerResponse.analysis.average}
-总分：${mockServerResponse.analysis.total}
-最佳科目：${mockServerResponse.analysis.bestSubject}（${mockServerResponse.analysis.bestScore}分）
-${mockServerResponse.analysis.evaluation}`;
-            
-            uploadStatus.value = '识别完成';
-          }, 2000);
-        } else {
-          throw new Error(`上传失败，状态码: ${uploadRes.statusCode}`);
+    // 使用uni.uploadFile API
+    await new Promise((resolve, reject) => {
+      const task = uni.uploadFile({
+        url: apiUrl,
+        filePath: filePath,
+        name: 'file',
+        fileType: 'image',
+        formData: {
+          'filename': fileName
+        },
+        header: {
+          'Content-Type': contentType,
+        },
+        success: (uploadRes) => {
+          if (uploadRes.statusCode === 200) {
+            // 上传成功，开始获取分析结果
+            getAnalysisResult(fileName).then(resolve).catch(reject);
+          } else {
+            reject(new Error(`上传失败，状态码: ${uploadRes.statusCode}`));
+          }
+        },
+        fail: (err) => {
+          reject(new Error(`上传失败: ${err.errMsg}`));
         }
-      },
-      fail: (err) => {
-        throw new Error(`上传失败: ${err.errMsg}`);
-      }
-    });
-    
-    // 监听上传进度
-    uploadTask.onProgressUpdate((res) => {
-      uploadStatus.value = `上传中 ${res.progress}%`;
+      });
+      
+      // 监听上传进度
+      task.onProgressUpdate(function(res) {
+        uploadStatus.value = `上传中 ${res.progress}%`;
+      });
     });
     
   } catch (err) {
@@ -165,17 +139,81 @@ ${mockServerResponse.analysis.evaluation}`;
   }
 };
 
-// 读取文件为ArrayBuffer
-const readFileAsArrayBuffer = (filePath) => {
-  return new Promise((resolve, reject) => {
-    uni.getFileSystemManager().readFile({
-      filePath,
-      // 不指定encoding，直接返回ArrayBuffer
-      success: (res) => resolve(res.data),
-      fail: reject
+// 获取分析结果的函数
+async function getAnalysisResult(fileName) {
+  try {
+    uploadStatus.value = '分析中...';
+    
+    // 这里假设后端分析完成后可以通过这个URL获取结果
+    const analysisUrl = `https://apps.hundao.xyz/1_MiscarryCalc/analysis/${fileName}`;
+    
+    // 发送请求获取分析结果
+    const res = await uni.request({
+      url: analysisUrl,
+      method: 'GET',
+      timeout: 30000 // 30秒超时
     });
+    
+    if (res.statusCode === 200 && res.data) {
+      // 成功获取分析结果
+      analysisResult.value = res.data;
+      uploadStatus.value = '分析完成';
+      return true;
+    } else if (res.statusCode === 202) {
+      // 如果后端还在处理，轮询获取结果
+      return pollForResult(fileName);
+    } else {
+      throw new Error(`分析失败，状态码: ${res.statusCode}`);
+    }
+  } catch (err) {
+    console.error('获取分析结果失败:', err);
+    uploadStatus.value = '分析失败: ' + err.message;
+    uni.showToast({
+      title: '分析失败',
+      icon: 'none'
+    });
+    throw err;
+  }
+};
+
+// 轮询获取结果的函数
+async function pollForResult(fileName) {
+  return new Promise(function(resolve, reject) {
+    const maxAttempts = 10; // 最大尝试次数
+    const interval = 3000; // 每3秒尝试一次
+    let attempts = 0;
+    
+    const poll = async function() {
+      try {
+        attempts++;
+        uploadStatus.value = `分析中(${attempts}/${maxAttempts})...`;
+        
+        const res = await uni.request({
+          url: `https://apps.hundao.xyz/1_MiscarryCalc/analysis/${fileName}`,
+          method: 'GET'
+        });
+        
+        if (res.statusCode === 200 && res.data) {
+          // 成功获取分析结果
+          analysisResult.value = res.data;
+          uploadStatus.value = '分析完成';
+          resolve(true);
+        } else if (attempts >= maxAttempts) {
+          throw new Error('分析超时，请稍后再试');
+        } else {
+          // 继续轮询
+          setTimeout(poll, interval);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    
+    // 开始轮询
+    setTimeout(poll, interval);
   });
 };
+
 </script>
 
 <style scoped>
