@@ -24,7 +24,7 @@
 					</button>
 				</view>
 			</view>
-			<view v-if="uploadStatus" class="status-message">{{ uploadStatus }}</view>
+			<view v-if="uploadStatus" class="status-message">测试用：{{ uploadStatus }}</view>
 
 			<!-- 并列显示两个分析报告 -->
 			<view v-if="analysisResult && analysisResult['是否停育'] && prevAnalysisResult" class="comparison-section">
@@ -69,8 +69,10 @@
 					</view>
 					<view class="comparison-row">
 						<text class="row-label">超声检查日期</text>
-						<text class="row-value">{{ formatDate(prevAnalysisResult['日期']) }}</text>
-						<text class="row-value">{{ formatDate(analysisResult['日期']) }}</text>
+						<picker mode="date" :value="prevAnalysisResult['日期']" :end="endDate" @change="onDateChange($event, 'previous')" style="flex: 1; text-align: center;">
+							<text class="row-value" :class="{ 'date-missing': !prevAnalysisResult['日期'], 'date-invalid': isDateOrderInvalid }">{{ formatDate(prevAnalysisResult['日期']) }} 🗓️</text>
+						</picker>
+            <text class="row-value">{{ formatDate(analysisResult['日期']) }}</text>
 					</view>
 				</view>
 
@@ -148,10 +150,10 @@
 							<text class="row-label">是否停育</text>
 							<text class="row-value">{{ analysisResult['是否停育'] ? '是' : '否' }}</text>
 						</view>
-						<view class="result-item">
-							<text class="row-label">超声检查日期</text>
-							<text class="row-value">{{ formatDate(analysisResult['日期']) }}</text>
-						</view>
+            <view class="result-item">
+              <text class="row-label">超声检查日期</text>
+              <text class="row-value">{{ formatDate(analysisResult['日期']) }}</text>
+            </view>
 					</view>
 				</view>
 
@@ -187,15 +189,15 @@
 						<view class="result-list">
 							<view class="result-item">
 								<text class="row-label">受孕日期</text>
-								<text class="row-value">需分析停育前报告</text>
+								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
 							<view class="result-item">
 								<text class="row-label">停育日期</text>
-								<text class="row-value">需分析停育前报告</text>
+								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
 							<view class="result-item">
 								<text class="row-label">预自然流产日</text>
-								<text class="row-value">需分析停育前报告</text>
+								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
 						</view>
             <!-- 上传胎停育前报告单按钮 -->
@@ -224,6 +226,8 @@
 <script setup>
 import { ref, computed } from 'vue';
 
+const endDate = new Date().toISOString().split('T')[0];
+
 // 响应式数据
 const imageUrl = ref('');
 const analysisResult = ref('');
@@ -240,6 +244,37 @@ const isPrevLoading = ref(false);
 // 控制Robinson公式显示格式（true: 周+天格式, false: 周格式）
 const showWeeksAndDays = ref(false);
 
+// 新增：日期顺序校验
+const isDateOrderInvalid = ref(false);
+const hasShownInvalidDateToast = ref(false);
+function validateDateOrder(showHint = true) {
+  try {
+    const prevDateStr = prevAnalysisResult.value && prevAnalysisResult.value['日期'];
+    const currDateStr = analysisResult.value && analysisResult.value['日期'];
+    if (!prevDateStr || !currDateStr) {
+      isDateOrderInvalid.value = false;
+      return;
+    }
+    const prevDate = new Date(prevDateStr);
+    const currDate = new Date(currDateStr);
+    if (isNaN(prevDate.getTime()) || isNaN(currDate.getTime())) {
+      isDateOrderInvalid.value = false;
+      return;
+    }
+    const invalid = currDate < prevDate;
+    if (invalid && showHint && !hasShownInvalidDateToast.value) {
+      showToast('当前报告日期早于停育前报告日期，请核对');
+      hasShownInvalidDateToast.value = true;
+    }
+    if (!invalid) {
+      hasShownInvalidDateToast.value = false; // 恢复以便后续再次提醒
+    }
+    isDateOrderInvalid.value = invalid;
+  } catch (e) {
+    // 忽略
+  }
+}
+
 // 新增：统一获取不同报告（current/previous）的引用与前缀
 function getReportRefs(kind = 'current') {
   return kind === 'previous'
@@ -250,13 +285,24 @@ function getReportRefs(kind = 'current') {
 // 计算属性：停育分析相关数据
 const miscarryAnalysis = computed(() => {
   // 检查是否有必要的数据
-  if (!prevAnalysisResult.value || !analysisResult.value || 
-      !prevAnalysisResult.value['日期'] || !prevAnalysisResult.value.GA1 || 
-      !analysisResult.value.GA1) {
+  if (!prevAnalysisResult.value || !analysisResult.value) {
     return {
       conceptionDate: '-',
       miscarryDate: '-',
       naturalMiscarryDate: '-'
+    };
+  }
+
+  // 检查是否有日期和孕周数据
+  const hasValidData = prevAnalysisResult.value['日期'] && 
+                      prevAnalysisResult.value.GA1 && 
+                      analysisResult.value.GA1;
+
+  if (!hasValidData) {
+    return {
+      conceptionDate: '需要红字日期！',
+      miscarryDate: '需要红字日期！',
+      naturalMiscarryDate: '需要红字日期！'
     };
   }
 
@@ -415,8 +461,10 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
     });
 
     if (res.statusCode === 200 && res.data) {
+      console.log(kind, '分析结果:', res.data);
       const { resultRef } = getReportRefs(kind);
       calculateAnalysisResults(res.data, resultRef);
+      validateDateOrder(true);
       updateStatus('分析完成');
       return true;
     } else {
@@ -432,8 +480,8 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
 async function calculateAnalysisResults(result, refs) {
   refs.value = result;
   // 计算孕周
-  const GS = result["孕囊大小"];
-  const CRL = result["胚芽长"];
+  const GS = parseInt(result["孕囊大小"]);
+  const CRL = parseInt(result["胚芽长"]);
   let GA0, GA1, GA2, GA3;
   if (GS !== undefined && GS !== null) GA0 = (GS + 30) / 7;       // 0. 孕囊估算（适用于5-6周前的早期评估）
   if (CRL !== undefined && CRL !== null) {
@@ -449,12 +497,12 @@ async function calculateAnalysisResults(result, refs) {
 
 // 日期格式化函数
 function formatDate(dateString) {
-  if (!dateString || dateString === '-') return '-';
-  
+  if (!dateString || dateString === '-') return '未识别到日期';
+
   try {
     // 直接解析YYYY-MM-DD格式，转换为"月日"格式
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
+    if (isNaN(date.getTime())) return '未识别到日期';
     
     const month = date.getMonth() + 1;
     const day = date.getDate();
@@ -481,6 +529,22 @@ function formatWeeksAndDays(weekValue) {
 // 切换Robinson公式显示格式
 function toggleRobinsonFormat() {
   showWeeksAndDays.value = !showWeeksAndDays.value;
+}
+
+// 手动修改日期
+function onDateChange(e, kind) {
+  const { resultRef } = getReportRefs(kind);
+  if (resultRef.value) {
+    resultRef.value['日期'] = e.detail.value;
+  } else {
+    // 如果还没有分析结果，初始化一个
+    if (kind === 'current') {
+      analysisResult.value = { '日期': e.detail.value };
+    } else if (kind === 'previous') {
+      prevAnalysisResult.value = { '日期': e.detail.value };
+    }
+  }
+  validateDateOrder(true);
 }
 
 // 计算受孕日期（根据超声检查日期和孕周）
@@ -577,7 +641,7 @@ async function executeTest(testType) {
     },
     'previous': {
       imageUrl: 'https://apps.hundao.xyz/rendered/B01.jpg',
-      apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test3',
+      apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test6',
       resultRef: prevAnalysisResult,
       imageRef: prevImageUrl
     }
@@ -601,6 +665,7 @@ async function executeTest(testType) {
     
     if (res.statusCode === 200) {
       calculateAnalysisResults(res.data, config.resultRef);
+      validateDateOrder(true);
       updateStatus('测试完成');
     } else {
       updateStatus('测试失败');
@@ -882,5 +947,45 @@ async function executeTest(testType) {
 	background-color: #e8f4fd !important;
 	transform: translateY(-2rpx);
 	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 日期缺失提醒样式 */
+.date-missing {
+	color: #e74c3c !important;
+	font-weight: bold !important;
+	background: linear-gradient(45deg, #ffebee, #ffcdd2) !important;
+	padding: 4rpx 8rpx !important;
+	border-radius: 8rpx !important;
+	border: 1rpx solid #ffcdd2 !important;
+	position: relative;
+	cursor: pointer;
+}
+
+.date-missing::before {
+	content: '⚠️';
+	margin-right: 4rpx;
+}
+
+/* 新增：日期顺序异常标红 */
+.date-invalid {
+	color: #e53935 !important;
+	font-weight: bold !important;
+	border-bottom: 2rpx solid #e53935;
+}
+
+/* 数据缺失提醒样式 */
+.data-missing {
+	color: #ff9800 !important;
+	font-weight: bold !important;
+	background: linear-gradient(45deg, #fff3e0, #ffe0b2) !important;
+	padding: 4rpx 8rpx !important;
+	border-radius: 8rpx !important;
+	border: 1rpx solid #ffe0b2 !important;
+	position: relative;
+}
+
+.data-missing::before {
+	content: '⚠️';
+	margin-right: 4rpx;
 }
 </style>
