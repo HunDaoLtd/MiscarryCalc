@@ -102,7 +102,20 @@
         <!-- 停育分析 -->
          <view class="comparison-data">
 					<text class="section-subtitle">停育分析</text>
-
+					<view class="result-list">
+						<view class="result-item">
+							<text class="row-label">受孕日期</text>
+							<text class="row-value">{{ calculateConceptionDate(prevAnalysisResult['日期'], prevAnalysisResult.GA1) }}</text>
+						</view>
+						<view class="result-item">
+							<text class="row-label">停育日期</text>
+							<text class="row-value">{{ calculateMiscarryDate(calculateConceptionDate(prevAnalysisResult['日期'], prevAnalysisResult.GA1), analysisResult.GA1) }}</text>
+						</view>
+						<view class="result-item">
+							<text class="row-label">预自然流产日</text>
+							<text class="row-value">{{ calculateNaturalMiscarryDate(calculateMiscarryDate(calculateConceptionDate(prevAnalysisResult['日期'], prevAnalysisResult.GA1), analysisResult.GA1)) }}</text>
+						</view>
+					</view>
          </view>
 			</view>
 
@@ -167,7 +180,21 @@
         <view v-if="analysisResult && analysisResult['是否停育']">
           <view class="single-report-data">
 						<text class="section-subtitle">停育分析</text>
-						<view style="display:flex;flex-direction:column;gap:12rpx;">
+						<view class="result-list">
+							<view class="result-item">
+								<text class="row-label">受孕日期</text>
+								<text class="row-value">需上传停育前报告</text>
+							</view>
+							<view class="result-item">
+								<text class="row-label">停育日期</text>
+								<text class="row-value">需上传停育前报告</text>
+							</view>
+							<view class="result-item">
+								<text class="row-label">预自然流产日</text>
+								<text class="row-value">需上传停育前报告</text>
+							</view>
+						</view>
+						<view style="display:flex;flex-direction:column;gap:12rpx;margin-top:20rpx;">
 							<button @click="choosePrevImage" class="upload-btn" style="background:linear-gradient(45deg,#b6b9ff,#e3d9fa);">
 								<view class="button-content">
 									<text class="upload-icon">+</text>
@@ -424,6 +451,101 @@ function formatWeeksAndDays(weekValue) {
 // 切换Robinson公式显示格式
 function toggleRobinsonFormat() {
   showWeeksAndDays.value = !showWeeksAndDays.value;
+}
+
+// 计算受孕日期（根据超声检查日期和孕周）
+function calculateConceptionDate(examDate, gestationalWeeks) {
+  if (!examDate || !gestationalWeeks || gestationalWeeks === '-') return '-';
+  
+  try {
+    const weeks = parseFloat(gestationalWeeks);
+    if (isNaN(weeks)) return '-';
+    
+    // 解析检查日期
+    let checkDate;
+    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(examDate)) {
+      checkDate = new Date(examDate);
+    } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(examDate)) {
+      const parts = examDate.split('/');
+      checkDate = new Date(parts[2], parts[1] - 1, parts[0]);
+    } else {
+      checkDate = new Date(examDate);
+    }
+    
+    if (isNaN(checkDate.getTime())) return '-';
+    
+    // 孕周转换为天数，然后从检查日期减去得到受孕日期
+    const daysFromConception = weeks * 7;
+    const conceptionDate = new Date(checkDate.getTime() - daysFromConception * 24 * 60 * 60 * 1000);
+    
+    const month = conceptionDate.getMonth() + 1;
+    const day = conceptionDate.getDate();
+    
+    return `${month}月${day}日`;
+  } catch (err) {
+    console.error('计算受孕日期失败:', err);
+    return '-';
+  }
+}
+
+// 计算停育日期（根据受孕日期和当前报告的孕周）
+function calculateMiscarryDate(conceptionDateStr, currentGestationalWeeks) {
+  if (!conceptionDateStr || !currentGestationalWeeks || conceptionDateStr === '-' || currentGestationalWeeks === '-') return '-';
+  
+  try {
+    const weeks = parseFloat(currentGestationalWeeks);
+    if (isNaN(weeks)) return '-';
+    
+    // 解析受孕日期 - 假设是当年的日期
+    const currentYear = new Date().getFullYear();
+    const monthDayMatch = conceptionDateStr.match(/(\d+)月(\d+)日/);
+    if (!monthDayMatch) return '-';
+    
+    const month = parseInt(monthDayMatch[1]) - 1; // JavaScript月份从0开始
+    const day = parseInt(monthDayMatch[2]);
+    
+    const conceptionDate = new Date(currentYear, month, day);
+    
+    // 根据当前孕周计算停育日期
+    const daysFromConception = weeks * 7;
+    const miscarryDate = new Date(conceptionDate.getTime() + daysFromConception * 24 * 60 * 60 * 1000);
+    
+    const miscarryMonth = miscarryDate.getMonth() + 1;
+    const miscarryDay = miscarryDate.getDate();
+    
+    return `${miscarryMonth}月${miscarryDay}日`;
+  } catch (err) {
+    console.error('计算停育日期失败:', err);
+    return '-';
+  }
+}
+
+// 计算预自然流产日期（停育日期 + 23天）
+function calculateNaturalMiscarryDate(miscarryDateStr) {
+  if (!miscarryDateStr || miscarryDateStr === '-') return '-';
+  
+  try {
+    // 解析停育日期 - 假设是当年的日期
+    const currentYear = new Date().getFullYear();
+    const monthDayMatch = miscarryDateStr.match(/(\d+)月(\d+)日/);
+    if (!monthDayMatch) return '-';
+    
+    const month = parseInt(monthDayMatch[1]) - 1; // JavaScript月份从0开始
+    const day = parseInt(monthDayMatch[2]);
+    
+    const miscarryDate = new Date(currentYear, month, day);
+    
+    // 加上23天
+    const naturalMiscarryDate = new Date(miscarryDate.getTime() + 23 * 24 * 60 * 60 * 1000);
+    
+    const naturalMiscarryMonth = naturalMiscarryDate.getMonth() + 1;
+    const naturalMiscarryDay = naturalMiscarryDate.getDate();
+    
+    return `${naturalMiscarryMonth}月${naturalMiscarryDay}日`;
+  } catch (err) {
+    console.error('计算预自然流产日期失败:', err);
+    return '-';
+  }
 }
 
 // 统一的测试方法
