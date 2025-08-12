@@ -8,19 +8,21 @@
 						<text>{{ isLoading ? '分析中...' : '拍摄超声报告单' }}</text>
 					</view>
 				</button>
-				<!-- 新增测试按钮 -->
-				<button @click="testAnalysis" class="upload-btn" style="margin-left:20rpx;background:linear-gradient(45deg,#ffd966,#f6b26b);">
-					<view class="button-content">
-						<text class="upload-icon">🧪</text>
-						<text>非停测试</text>
-					</view>
-				</button>
-        <button @click="testAnalysis2" class="upload-btn" style="margin-left:20rpx;background:linear-gradient(45deg,#ffd966,#f6b26b);">
-					<view class="button-content">
-						<text class="upload-icon">🧪</text>
-						<text>停育测试</text>
-					</view>
-				</button>
+				<!-- 测试按钮 -->
+				<view class="test-buttons">
+					<button @click="executeTest('normal')" class="upload-btn test-btn">
+						<view class="button-content">
+							<text class="upload-icon">🧪</text>
+							<text>非停测试</text>
+						</view>
+					</button>
+					<button @click="executeTest('miscarry')" class="upload-btn test-btn">
+						<view class="button-content">
+							<text class="upload-icon">🧪</text>
+							<text>停育测试</text>
+						</view>
+					</button>
+				</view>
 			</view>
 			<view v-if="uploadStatus" class="status-message">{{ uploadStatus }}</view>
 
@@ -75,26 +77,28 @@
 				<!-- 孕周估算对比 -->
 				<view class="comparison-data">
 					<text class="section-subtitle">孕周估算</text>
-					<view v-if="!analysisResult['胚芽长'] || !prevAnalysisResult['胚芽长']" class="comparison-row">
+					<!-- 孕囊估算：当任一报告没有胚芽长时显示 -->
+					<view v-if="!analysisResult['胚芽长'] || !prevAnalysisResult['胚芽长']" class="comparison-row clickable-row" @click="toggleRobinsonFormat">
 						<text class="row-label">孕囊估算</text>
-						<text class="row-value">{{ prevAnalysisResult.GA0 ?? '-' }} 周</text>
-						<text class="row-value">{{ analysisResult.GA0 ?? '-' }} 周</text>
+						<text class="row-value">{{ !prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA0) : (prevAnalysisResult.GA0 + ' 周')) : '-' }}</text>
+						<text class="row-value">{{ !analysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA0) : (analysisResult.GA0 + ' 周')) : '-' }}</text>
 					</view>
-					<view v-if="analysisResult['胚芽长'] && prevAnalysisResult['胚芽长']">
+					<!-- Robinson公式等：当任一报告有胚芽长时显示 -->
+					<view v-if="analysisResult['胚芽长'] || prevAnalysisResult['胚芽长']">
 						<view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
 							<text class="row-label">Robinson公式 (推荐)</text>
-							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA1) : (prevAnalysisResult.GA1 + ' 周') }}</text>
-							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA1) : (analysisResult.GA1 + ' 周') }}</text>
+							<text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA1) : (prevAnalysisResult.GA1 + ' 周')) : '-' }}</text>
+							<text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA1) : (analysisResult.GA1 + ' 周')) : '-' }}</text>
 						</view>
 						<view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
 							<text class="row-label">回归方程</text>
-							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA2) : (prevAnalysisResult.GA2 + ' 周') }}</text>
-							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA2) : (analysisResult.GA2 + ' 周') }}</text>
+							<text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA2) : (prevAnalysisResult.GA2 + ' 周')) : '-' }}</text>
+							<text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA2) : (analysisResult.GA2 + ' 周')) : '-' }}</text>
 						</view>
 						<view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
 							<text class="row-label">经验法则</text>
-							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA3) : (prevAnalysisResult.GA3 + ' 周') }}</text>
-							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA3) : (analysisResult.GA3 + ' 周') }}</text>
+							<text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA3) : (prevAnalysisResult.GA3 + ' 周')) : '-' }}</text>
+							<text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA3) : (analysisResult.GA3 + ' 周')) : '-' }}</text>
 						</view>
 					</view>
 				</view>
@@ -105,15 +109,15 @@
 					<view class="result-list">
 						<view class="result-item">
 							<text class="row-label">受孕日期</text>
-							<text class="row-value">{{ calculateConceptionDate(prevAnalysisResult['日期'], prevAnalysisResult.GA1) }}</text>
+							<text class="row-value">{{ miscarryAnalysis.conceptionDate }}</text>
 						</view>
 						<view class="result-item">
 							<text class="row-label">停育日期</text>
-							<text class="row-value">{{ calculateMiscarryDate(calculateConceptionDate(prevAnalysisResult['日期'], prevAnalysisResult.GA1), analysisResult.GA1) }}</text>
+							<text class="row-value">{{ miscarryAnalysis.miscarryDate }}</text>
 						</view>
 						<view class="result-item">
 							<text class="row-label">预自然流产日</text>
-							<text class="row-value">{{ calculateNaturalMiscarryDate(calculateMiscarryDate(calculateConceptionDate(prevAnalysisResult['日期'], prevAnalysisResult.GA1), analysisResult.GA1)) }}</text>
+							<text class="row-value">{{ miscarryAnalysis.naturalMiscarryDate }}</text>
 						</view>
 					</view>
          </view>
@@ -155,9 +159,9 @@
 				<view class="single-report-data">
 					<text class="section-subtitle">孕周估算</text>
 					<view class="result-list">
-						<view v-if="!analysisResult['胚芽长']" class="result-item">
+						<view v-if="!analysisResult['胚芽长']" class="result-item clickable-row" @click="toggleRobinsonFormat">
 							<text class="row-label">孕囊估算</text>
-							<text class="row-value">{{ analysisResult.GA0 }} 周</text>
+							<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA0) : (analysisResult.GA0 + ' 周') }}</text>
 						</view>
 						<view v-else>
 							<view class="result-item clickable-row" @click="toggleRobinsonFormat">
@@ -176,32 +180,33 @@
 					</view>
 				</view>
 
-        <!-- 如果停育，显示上传胎停育前报告单按钮 -->
+        <!-- 如果停育，显示更多信息 -->
         <view v-if="analysisResult && analysisResult['是否停育']">
           <view class="single-report-data">
 						<text class="section-subtitle">停育分析</text>
 						<view class="result-list">
 							<view class="result-item">
 								<text class="row-label">受孕日期</text>
-								<text class="row-value">需上传停育前报告</text>
+								<text class="row-value">需分析停育前报告</text>
 							</view>
 							<view class="result-item">
 								<text class="row-label">停育日期</text>
-								<text class="row-value">需上传停育前报告</text>
+								<text class="row-value">需分析停育前报告</text>
 							</view>
 							<view class="result-item">
 								<text class="row-label">预自然流产日</text>
-								<text class="row-value">需上传停育前报告</text>
+								<text class="row-value">需分析停育前报告</text>
 							</view>
 						</view>
-						<view style="display:flex;flex-direction:column;gap:12rpx;margin-top:20rpx;">
-							<button @click="choosePrevImage" class="upload-btn" style="background:linear-gradient(45deg,#b6b9ff,#e3d9fa);">
+            <!-- 上传胎停育前报告单按钮 -->
+						<view class="action-buttons">
+							<button @click="choosePrevImage" :loading="isPrevLoading" :disabled="isPrevLoading" class="upload-btn prev-btn">
 								<view class="button-content">
 									<text class="upload-icon">+</text>
-									<text>上传胎停育前报告单</text>
+									<text>{{ isPrevLoading ? '分析中...' : '拍摄胎停育前报告单' }}</text>
 								</view>
 							</button>
-							<button @click="testAnalysis3" class="upload-btn" style="background:linear-gradient(45deg,#ffd966,#f6b26b);">
+							<button @click="executeTest('previous')" class="upload-btn test-btn">
 								<view class="button-content">
 									<text class="upload-icon">+</text>
 									<text>胎停育前测试</text>
@@ -217,19 +222,59 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 // 响应式数据
 const imageUrl = ref('');
 const analysisResult = ref('');
 const uploadStatus = ref('');
+const isLoading = ref(false);
 
 // 用于存储胎停育前的图片和分析结果
 const prevImageUrl = ref('');
 const prevAnalysisResult = ref('');
 
+// 分别控制两个上传按钮的加载状态
+const isPrevLoading = ref(false);
+
 // 控制Robinson公式显示格式（true: 周+天格式, false: 周格式）
 const showWeeksAndDays = ref(false);
+
+// 新增：统一获取不同报告（current/previous）的引用与前缀
+function getReportRefs(kind = 'current') {
+  return kind === 'previous'
+    ? { imageRef: prevImageUrl, resultRef: prevAnalysisResult, prefix: 'prev_' }
+    : { imageRef: imageUrl, resultRef: analysisResult, prefix: 'score_' };
+}
+
+// 计算属性：停育分析相关数据
+const miscarryAnalysis = computed(() => {
+  // 检查是否有必要的数据
+  if (!prevAnalysisResult.value || !analysisResult.value || 
+      !prevAnalysisResult.value['日期'] || !prevAnalysisResult.value.GA1 || 
+      !analysisResult.value.GA1) {
+    return {
+      conceptionDate: '-',
+      miscarryDate: '-',
+      naturalMiscarryDate: '-'
+    };
+  }
+
+  // 计算受孕日期
+  const conceptionDate = calculateConceptionDate(prevAnalysisResult.value['日期'], prevAnalysisResult.value.GA1);
+  
+  // 计算停育日期
+  const miscarryDate = calculateMiscarryDate(conceptionDate, analysisResult.value.GA1);
+  
+  // 计算预自然流产日期
+  const naturalMiscarryDate = calculateNaturalMiscarryDate(miscarryDate);
+
+  return {
+    conceptionDate,
+    miscarryDate,
+    naturalMiscarryDate
+  };
+});
 
 // 工具函数：统一的Toast显示
 function showToast(title, icon = 'none') {
@@ -267,60 +312,65 @@ function getFileTypeInfo(filePath) {
   return { ext, contentType };
 }
 
-// 统一的图片选择函数
-async function chooseImageUnified(isForPrevious = false) {
+// 统一的图片选择函数（以 kind 区分 current/previous）
+async function chooseImageUnified(kind = 'current') {
   try {
     updateStatus('选择文件中...');
-    
+
     const res = await uni.chooseImage({
       count: 1,
       sourceType: ['album', 'camera'],
       sizeType: ['compressed']
     });
-    
-    const filePath = res.tempFilePaths[0];
-    
-    // 根据类型设置对应的图片URL
-    if (isForPrevious) {
-      prevImageUrl.value = filePath;
-    } else {
-      imageUrl.value = filePath;
-    }
 
+    const filePath = res.tempFilePaths[0];
+
+    const { imageRef } = getReportRefs(kind);
+    imageRef.value = filePath;
+
+    // 根据类型设置对应的 loading 状态
+    if (kind === 'previous') {
+      isPrevLoading.value = true;
+    } else {
+      isLoading.value = true;
+    }
+    
     const { ext, contentType } = getFileTypeInfo(filePath);
-    await uploadFileUnified(filePath, contentType, ext, isForPrevious);
+    await uploadFileUnified(filePath, contentType, ext, kind);
   } catch (err) {
     handleError(err, '选择文件失败', '选择文件失败');
+  } finally {
+    // 根据类型重置对应的 loading 状态
+    if (kind === 'previous') {
+      isPrevLoading.value = false;
+    } else {
+      isLoading.value = false;
+    }
   }
 }
 
 // 选择主报告单
 async function chooseImage() {
-  await chooseImageUnified(false);
+  await chooseImageUnified('current');
 }
 
 // 选择胎停育前报告单
 async function choosePrevImage() {
-  await chooseImageUnified(true);
+  await chooseImageUnified('previous');
 }
 
-// 统一的文件上传函数
-async function uploadFileUnified(filePath, contentType, ext, isForPrevious = false) {
+// 统一的文件上传函数（以 kind 区分 current/previous）
+async function uploadFileUnified(filePath, contentType, ext, kind = 'current') {
   if (!ext) ext = '.jpg';
   try {
     updateStatus('上传中...');
-    
-    // 根据类型清空对应的结果
-    if (isForPrevious) {
-      prevAnalysisResult.value = '';
-    } else {
-      analysisResult.value = '';
-    }
 
-    const prefix = isForPrevious ? 'prev_' : 'score_';
+    const { resultRef, prefix } = getReportRefs(kind);
+    resultRef.value = '';
+
     const fileName = `${prefix}${Date.now()}${ext}`;
     const apiUrl = `https://apps.hundao.xyz/rendered/${fileName}`;
-    
+
     await new Promise((resolve, reject) => {
       const task = uni.uploadFile({
         url: apiUrl,
@@ -331,7 +381,7 @@ async function uploadFileUnified(filePath, contentType, ext, isForPrevious = fal
         header: { 'Content-Type': contentType },
         success: (uploadRes) => {
           if (uploadRes.statusCode === 200) {
-            getAnalysisResultUnified(fileName, isForPrevious).then(resolve).catch(reject);
+            getAnalysisResultUnified(fileName, kind).then(resolve).catch(reject);
           } else {
             reject(new Error(`上传失败，状态码: ${uploadRes.statusCode}`));
           }
@@ -340,24 +390,24 @@ async function uploadFileUnified(filePath, contentType, ext, isForPrevious = fal
           reject(new Error(`上传失败: ${err.errMsg}`));
         }
       });
-      
+
       task.onProgressUpdate(function(res) {
         updateStatus(`上传中 ${res.progress}%`);
       });
     });
-    
+
   } catch (err) {
     handleError(err, '上传失败', '上传失败: ' + err.message);
   }
 }
 
-// 统一的分析结果获取函数
-async function getAnalysisResultUnified(fileName, isForPrevious = false) {
+// 统一的分析结果获取函数（以 kind 区分 current/previous）
+async function getAnalysisResultUnified(fileName, kind = 'current') {
   try {
     updateStatus('分析中...');
-    
+
     const analysisUrl = `https://apps.hundao.xyz/1_MiscarryCalc/analysis/${fileName}`;
-    
+
     const res = await uni.request({
       url: analysisUrl,
       method: 'GET',
@@ -365,9 +415,8 @@ async function getAnalysisResultUnified(fileName, isForPrevious = false) {
     });
 
     if (res.statusCode === 200 && res.data) {
-      // 根据类型选择对应的结果引用
-      const targetRef = isForPrevious ? prevAnalysisResult : analysisResult;
-      calculateAnalysisResults(res.data, targetRef);
+      const { resultRef } = getReportRefs(kind);
+      calculateAnalysisResults(res.data, resultRef);
       updateStatus('分析完成');
       return true;
     } else {
@@ -402,37 +451,18 @@ async function calculateAnalysisResults(result, refs) {
 function formatDate(dateString) {
   if (!dateString || dateString === '-') return '-';
   
-  // 尝试解析各种日期格式
-  let date;
-  
-  // 如果是已经格式化的日期（如"1月10日"），直接返回
-  if (/\d+月\d+日/.test(dateString)) {
-    return dateString;
+  try {
+    // 直接解析YYYY-MM-DD格式，转换为"月日"格式
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    
+    return `${month}月${day}日`;
+  } catch (err) {
+    return dateString; // 解析失败返回原字符串
   }
-  
-  // 尝试解析 YYYY-MM-DD、YYYY/MM/DD 等格式
-  if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(dateString)) {
-    date = new Date(dateString);
-  }
-  // 尝试解析 DD/MM/YYYY 格式
-  else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateString)) {
-    const parts = dateString.split('/');
-    date = new Date(parts[2], parts[1] - 1, parts[0]);
-  }
-  // 尝试解析其他格式
-  else {
-    date = new Date(dateString);
-  }
-  
-  // 检查日期是否有效
-  if (isNaN(date.getTime())) {
-    return dateString; // 如果无法解析，返回原始字符串
-  }
-  
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  
-  return `${month}月${day}日`;
 }
 
 // 周数转换为"周+天"格式的函数
@@ -461,27 +491,19 @@ function calculateConceptionDate(examDate, gestationalWeeks) {
     const weeks = parseFloat(gestationalWeeks);
     if (isNaN(weeks)) return '-';
     
-    // 解析检查日期
-    let checkDate;
-    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(examDate)) {
-      checkDate = new Date(examDate);
-    } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(examDate)) {
-      const parts = examDate.split('/');
-      checkDate = new Date(parts[2], parts[1] - 1, parts[0]);
-    } else {
-      checkDate = new Date(examDate);
-    }
-    
+    // 直接解析YYYY-MM-DD格式日期
+    const checkDate = new Date(examDate);
     if (isNaN(checkDate.getTime())) return '-';
     
     // 孕周转换为天数，然后从检查日期减去得到受孕日期
     const daysFromConception = weeks * 7;
     const conceptionDate = new Date(checkDate.getTime() - daysFromConception * 24 * 60 * 60 * 1000);
     
-    const month = conceptionDate.getMonth() + 1;
-    const day = conceptionDate.getDate();
+    const year = conceptionDate.getFullYear();
+    const month = String(conceptionDate.getMonth() + 1).padStart(2, '0');
+    const day = String(conceptionDate.getDate()).padStart(2, '0');
     
-    return `${month}月${day}日`;
+    return `${year}-${month}-${day}`;
   } catch (err) {
     console.error('计算受孕日期失败:', err);
     return '-';
@@ -496,24 +518,19 @@ function calculateMiscarryDate(conceptionDateStr, currentGestationalWeeks) {
     const weeks = parseFloat(currentGestationalWeeks);
     if (isNaN(weeks)) return '-';
     
-    // 解析受孕日期 - 假设是当年的日期
-    const currentYear = new Date().getFullYear();
-    const monthDayMatch = conceptionDateStr.match(/(\d+)月(\d+)日/);
-    if (!monthDayMatch) return '-';
-    
-    const month = parseInt(monthDayMatch[1]) - 1; // JavaScript月份从0开始
-    const day = parseInt(monthDayMatch[2]);
-    
-    const conceptionDate = new Date(currentYear, month, day);
+    // 直接解析YYYY-MM-DD格式的受孕日期
+    const conceptionDate = new Date(conceptionDateStr);
+    if (isNaN(conceptionDate.getTime())) return '-';
     
     // 根据当前孕周计算停育日期
     const daysFromConception = weeks * 7;
     const miscarryDate = new Date(conceptionDate.getTime() + daysFromConception * 24 * 60 * 60 * 1000);
     
-    const miscarryMonth = miscarryDate.getMonth() + 1;
-    const miscarryDay = miscarryDate.getDate();
+    const year = miscarryDate.getFullYear();
+    const month = String(miscarryDate.getMonth() + 1).padStart(2, '0');
+    const day = String(miscarryDate.getDate()).padStart(2, '0');
     
-    return `${miscarryMonth}月${miscarryDay}日`;
+    return `${year}-${month}-${day}`;
   } catch (err) {
     console.error('计算停育日期失败:', err);
     return '-';
@@ -525,23 +542,18 @@ function calculateNaturalMiscarryDate(miscarryDateStr) {
   if (!miscarryDateStr || miscarryDateStr === '-') return '-';
   
   try {
-    // 解析停育日期 - 假设是当年的日期
-    const currentYear = new Date().getFullYear();
-    const monthDayMatch = miscarryDateStr.match(/(\d+)月(\d+)日/);
-    if (!monthDayMatch) return '-';
-    
-    const month = parseInt(monthDayMatch[1]) - 1; // JavaScript月份从0开始
-    const day = parseInt(monthDayMatch[2]);
-    
-    const miscarryDate = new Date(currentYear, month, day);
+    // 直接解析YYYY-MM-DD格式的停育日期
+    const miscarryDate = new Date(miscarryDateStr);
+    if (isNaN(miscarryDate.getTime())) return '-';
     
     // 加上23天
     const naturalMiscarryDate = new Date(miscarryDate.getTime() + 23 * 24 * 60 * 60 * 1000);
     
-    const naturalMiscarryMonth = naturalMiscarryDate.getMonth() + 1;
-    const naturalMiscarryDay = naturalMiscarryDate.getDate();
+    const year = naturalMiscarryDate.getFullYear();
+    const month = String(naturalMiscarryDate.getMonth() + 1).padStart(2, '0');
+    const day = String(naturalMiscarryDate.getDate()).padStart(2, '0');
     
-    return `${naturalMiscarryMonth}月${naturalMiscarryDay}日`;
+    return `${year}-${month}-${day}`;
   } catch (err) {
     console.error('计算预自然流产日期失败:', err);
     return '-';
@@ -599,19 +611,6 @@ async function executeTest(testType) {
     showToast('测试异常');
   }
 }
-
-// 测试函数
-async function testAnalysis() {
-  await executeTest('normal');
-}
-
-async function testAnalysis2() {
-  await executeTest('miscarry');
-}
-
-async function testAnalysis3() {
-  await executeTest('previous');
-}
 </script>
 
 <style scoped>
@@ -656,6 +655,20 @@ async function testAnalysis3() {
   gap: 20rpx;
 }
 
+/* 测试按钮组 */
+.test-buttons {
+	display: flex;
+	gap: 20rpx;
+}
+
+/* 操作按钮组 */
+.action-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 12rpx;
+	margin-top: 20rpx;
+}
+
 /* 上传按钮 - 更有活力的渐变色 */
 .upload-btn {
 	width: 100%;
@@ -668,11 +681,23 @@ async function testAnalysis3() {
 	transition: all 0.2s ease-in-out;
 	border: none;
 }
+
+/* 测试按钮样式 */
+.test-btn {
+	background: linear-gradient(45deg, #ffd966, #f6b26b) !important;
+	box-shadow: 0 8rpx 20rpx rgba(255, 182, 107, 0.3) !important;
+}
+
+/* 停育前报告按钮样式 */
+.prev-btn {
+	background: linear-gradient(45deg, #b6b9ff, #e3d9fa) !important;
+	box-shadow: 0 8rpx 20rpx rgba(182, 185, 255, 0.3) !important;
+}
+
 .upload-btn::after { border: none; }
 
 .upload-btn[disabled] {
-	opacity: 0.6;
-	background: #ccc;
+	opacity: 0.7;
 	box-shadow: none;
 }
 
@@ -704,8 +729,9 @@ async function testAnalysis3() {
 	margin-top: 10rpx;
 }
 
-/* 结果区域 */
-.result-section {
+/* 统一：卡片容器通用样式（原 result-section 与 comparison-data 公共部分） */
+.result-section,
+.comparison-data {
 	display: flex;
 	flex-direction: column;
 	background: #fafbfc;
@@ -714,23 +740,34 @@ async function testAnalysis3() {
 	border: 1rpx solid #e9ecef;
 }
 
-.result-list {
+/* comparison-data 额外的内部间距（gap） */
+.comparison-data { gap: 12rpx; }
+
+/* 区域内列表（原 result-list 与 single-report-data 公共部分） */
+.result-list,
+.single-report-data {
 	display: flex;
 	flex-direction: column;
 	gap: 12rpx;
 }
 
-.result-item {
+/* single-report-data 原有的额外外边距 */
+.single-report-data { margin-bottom: 24rpx; }
+
+/* 行容器通用样式（原 result-item 与 comparison-row 公共部分） */
+.result-item,
+.comparison-row {
 	display: flex;
-	justify-content: space-between;
 	align-items: center;
-	font-size: 24rpx;
 	background-color: #f7f9fc;
 	border-radius: 12rpx;
 	padding: 18rpx 16rpx;
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 	margin-bottom: 8rpx;
 }
+
+/* result-item 特有：两端对齐 */
+.result-item { justify-content: space-between; }
 
 .risk-high {
 	color: #e74c3c;
@@ -781,17 +818,6 @@ async function testAnalysis3() {
 	border: 1rpx solid #f5c99b;
 }
 
-/* 数据对比区域 */
-.comparison-data {
-	display: flex;
-	flex-direction: column;
-	gap: 12rpx;
-	background: #fafbfc;
-	border-radius: 16rpx;
-	padding: 20rpx;
-	border: 1rpx solid #e9ecef;
-}
-
 .section-subtitle {
 	font-size: 26rpx;
 	font-weight: 600;
@@ -803,18 +829,8 @@ async function testAnalysis3() {
 	border-radius: 8rpx;
 }
 
-.comparison-row {
-	display: flex;
-	align-items: center;
-	background-color: #f7f9fc;
-	border-radius: 12rpx;
-	padding: 18rpx 16rpx;
-	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
-	margin-bottom: 8rpx;
-}
-
 .row-label {
-	flex: 2.2;
+	flex: 1.8;
 	font-size: 24rpx;
 	color: #666;
 	font-weight: 600;
@@ -828,10 +844,9 @@ async function testAnalysis3() {
 	text-align: center;
 	font-weight: 600;
 	line-height: 1.3;
-	word-break: break-all;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	word-break: break-word;
+	white-space: normal;
+	overflow: visible;
 }
 
 /* 对比模式下的分隔线 */
@@ -844,14 +859,6 @@ async function testAnalysis3() {
 /* 单列模式下右对齐 */
 .result-item .row-value {
 	text-align: right;
-}
-
-/* 单个报告样式 */
-.single-report-data {
-	display: flex;
-	flex-direction: column;
-	gap: 12rpx;
-	margin-bottom: 24rpx;
 }
 
 /* 可点击行样式 */
