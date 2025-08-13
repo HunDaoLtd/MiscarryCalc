@@ -503,9 +503,9 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
 // 分析结果计算
 async function calculateAnalysisResults(result, refs) {
   refs.value = result;
-  // 计算孕周
-  const GS = parseInt(result["孕囊大小"]);
-  const CRL = parseInt(result["胚芽长"]);
+  // 计算孕周，处理胚芽长为空字符串的情况，将其转换为0
+  const GS = parseInt(result["孕囊大小"] || "0");
+  const CRL = parseInt(result["胚芽长"] || "0");
   const CRL_cm = CRL / 10; // 转换为厘米
   let GA0, GA1, GA2, GA3, GA4;
   if (GS !== undefined && GS !== null) GA0 = (0.882 * GS + 33.117) / 7; // 0. 孕囊估算（适用于5-6周前的早期评估）
