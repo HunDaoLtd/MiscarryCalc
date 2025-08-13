@@ -24,7 +24,6 @@
 					</button>
 				</view>
 			</view>
-			<view v-if="uploadStatus" class="status-message">测试用：{{ uploadStatus }}</view>
 
 			<!-- 并列显示两个分析报告 -->
 			<view v-if="analysisResult && analysisResult['是否停育'] && prevAnalysisResult" class="comparison-section">
@@ -122,7 +121,7 @@
 							<text class="row-label">停育日期</text>
 							<text class="row-value">{{ miscarryAnalysis.miscarryDate }}</text>
 						</view>
-						<view class="result-item">
+						<view class="result-item clickable-row" @click="showNaturalMiscarryModal">
 							<text class="row-label">预自然流产日</text>
 							<text class="row-value">{{ miscarryAnalysis.naturalMiscarryDate }}</text>
 						</view>
@@ -204,7 +203,7 @@
 								<text class="row-label">停育日期</text>
 								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
-							<view class="result-item">
+							<view class="result-item clickable-row" @click="showNaturalMiscarryModal">
 								<text class="row-label">预自然流产日</text>
 								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
@@ -229,6 +228,22 @@
 
 			</view>
 		</view>
+
+		<!-- 自然流产概率 自定义弹窗 -->
+		<uni-popup ref="naturalPopup" type="center">
+			<view class="custom-dialog">
+				<text class="section-title">自然流产概率</text>
+				<view class="comparison-data">
+					<view v-for="(item, idx) in naturalData" :key="idx" class="result-item">
+						<text class="row-label">{{ item.label }}</text>
+						<text class="row-value">{{ item.value }}</text>
+					</view>
+				</view>
+				<view class="dialog-actions">
+					<button class="dialog-btn" @click="closeNaturalPopup">知道了</button>
+				</view>
+			</view>
+		</uni-popup>
 	</view>
 </template>
 
@@ -563,24 +578,11 @@ function onDateChange(e, kind) {
 // 计算末次月经（根据超声检查日期和孕周）
 function calculatelastMenstrualPeriod(examDate, gestationalWeeks) {
   if (!examDate || !gestationalWeeks || gestationalWeeks === '-') return '-';
-  
   try {
     const weeks = parseFloat(gestationalWeeks);
     if (isNaN(weeks)) return '-';
-    
-    // 直接解析YYYY-MM-DD格式日期
-    const checkDate = new Date(examDate);
-    if (isNaN(checkDate.getTime())) return '-';
-    
-    // 孕周转换为天数，然后从检查日期减去得到末次月经
-    const daysFromlastMenstrual = weeks * 7;
-    const lastMenstrualPeriod = new Date(checkDate.getTime() - daysFromlastMenstrual * 24 * 60 * 60 * 1000);
-    
-    const year = lastMenstrualPeriod.getFullYear();
-    const month = String(lastMenstrualPeriod.getMonth() + 1).padStart(2, '0');
-    const day = String(lastMenstrualPeriod.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
+    // 末次月经 = 检查日期 - 孕周(天)
+    return addDaysYMD(examDate, -weeks * 7);
   } catch (err) {
     console.error('计算末次月经失败:', err);
     return '-';
@@ -590,24 +592,11 @@ function calculatelastMenstrualPeriod(examDate, gestationalWeeks) {
 // 计算停育日期（根据末次月经和当前报告的孕周）
 function calculateMiscarryDate(lastMenstrualPeriodStr, currentGestationalWeeks) {
   if (!lastMenstrualPeriodStr || !currentGestationalWeeks || lastMenstrualPeriodStr === '-' || currentGestationalWeeks === '-') return '-';
-  
   try {
     const weeks = parseFloat(currentGestationalWeeks);
     if (isNaN(weeks)) return '-';
-    
-    // 直接解析YYYY-MM-DD格式的末次月经
-    const lastMenstrualPeriod = new Date(lastMenstrualPeriodStr);
-    if (isNaN(lastMenstrualPeriod.getTime())) return '-';
-    
-    // 根据当前孕周计算停育日期
-    const daysFromlastMenstrual = weeks * 7;
-    const miscarryDate = new Date(lastMenstrualPeriod.getTime() + daysFromlastMenstrual * 24 * 60 * 60 * 1000);
-    
-    const year = miscarryDate.getFullYear();
-    const month = String(miscarryDate.getMonth() + 1).padStart(2, '0');
-    const day = String(miscarryDate.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
+    // 停育日期 = LMP + 当前孕周(天)
+    return addDaysYMD(lastMenstrualPeriodStr, weeks * 7);
   } catch (err) {
     console.error('计算停育日期失败:', err);
     return '-';
@@ -617,24 +606,60 @@ function calculateMiscarryDate(lastMenstrualPeriodStr, currentGestationalWeeks) 
 // 计算预自然流产日期（停育日期 + 23天）
 function calculateNaturalMiscarryDate(miscarryDateStr) {
   if (!miscarryDateStr || miscarryDateStr === '-') return '-';
-  
   try {
-    // 直接解析YYYY-MM-DD格式的停育日期
-    const miscarryDate = new Date(miscarryDateStr);
-    if (isNaN(miscarryDate.getTime())) return '-';
-    
-    // 加上23天
-    const naturalMiscarryDate = new Date(miscarryDate.getTime() + 23 * 24 * 60 * 60 * 1000);
-    
-    const year = naturalMiscarryDate.getFullYear();
-    const month = String(naturalMiscarryDate.getMonth() + 1).padStart(2, '0');
-    const day = String(naturalMiscarryDate.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
+    return addDaysYMD(miscarryDateStr, 23);
   } catch (err) {
     console.error('计算预自然流产日期失败:', err);
     return '-';
   }
+}
+
+// 新增：点击“预自然流产日”弹窗展示不同概率时间点（使用 uni-popup）
+function showNaturalMiscarryModal() {
+  try {
+    const miscarryDateStr = miscarryAnalysis.value && miscarryAnalysis.value.miscarryDate;
+    if (!miscarryDateStr || miscarryDateStr === '-') {
+      showToast('请拍摄停育前报告');
+      return;
+    }
+    if (!prevAnalysisResult.value['日期']) {
+      showToast('「超声检查日期（停育前）」未识别到，请手动输入');
+      return;
+    }
+
+    const d15 = addDaysYMD(miscarryDateStr, 15);
+    const d23 = addDaysYMD(miscarryDateStr, 23);
+    const d32 = addDaysYMD(miscarryDateStr, 32);
+
+    naturalData.value = [
+      { label: `${d15} 前发动`, value: '25% 🟩🟨🟨🟨' },
+      { label: `${d23} 前发动`, value: '50% 🟩🟩🟨🟨' },
+      { label: `${d32} 前发动`, value: '75% 🟩🟩🟩🟨' }
+    ];
+
+    naturalPopup.value && naturalPopup.value.open();
+  } catch (err) {
+    console.error('显示预自然流产概率弹窗失败:', err);
+  }
+}
+
+// 自定义弹窗：状态与引用
+const naturalPopup = ref(null);
+const naturalData = ref([]);
+
+function closeNaturalPopup() {
+  try { naturalPopup.value && naturalPopup.value.close(); } catch (e) { /* noop */ }
+}
+
+// 工具：在 YYYY-MM-DD 上加天数并返回 YYYY-MM-DD
+function addDaysYMD(dateStr, days) {
+  const base = new Date(dateStr);
+  if (isNaN(base.getTime())) return '-';
+  const t = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, '0');
+  const d = String(t.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 // 统一的测试方法
@@ -654,7 +679,7 @@ async function executeTest(testType) {
     },
     'previous': {
       imageUrl: 'https://apps.hundao.xyz/rendered/B01.jpg',
-      apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test6',
+      apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test4',
       resultRef: prevAnalysisResult,
       imageRef: prevImageUrl
     }
@@ -1000,5 +1025,30 @@ async function executeTest(testType) {
 .data-missing::before {
 	content: '⚠️';
 	margin-right: 4rpx;
+}
+
+/* 自定义弹窗样式 */
+.custom-dialog {
+	width: 600rpx;
+	background: #fff;
+	border-radius: 24rpx;
+	padding: 40rpx 30rpx;
+	box-shadow: 0 10rpx 40rpx rgba(0, 0, 0, 0.08);
+	display: flex;
+	flex-direction: column;
+	gap: 30rpx;
+}
+
+.dialog-actions {
+	display: flex;
+	justify-content: center;
+	margin-top: 20rpx;
+}
+
+.dialog-btn {
+	background: linear-gradient(45deg, #66e0c6, #37a898);
+	color: #fff;
+	box-shadow: 0 4rpx 12rpx rgba(55, 168, 152, 0.3);
+	transition: all 0.2s ease-in-out;
 }
 </style>
