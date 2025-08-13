@@ -92,6 +92,11 @@
 							<text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA1) : (prevAnalysisResult.GA1 + ' 周')) : '-' }}</text>
 							<text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA1) : (analysisResult.GA1 + ' 周')) : '-' }}</text>
 						</view>
+            <view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
+              <text class="row-label">Hadlock公式</text>
+              <text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA4) : (prevAnalysisResult.GA4 + ' 周')) : '-' }}</text>
+              <text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA4) : (analysisResult.GA4 + ' 周')) : '-' }}</text>
+            </view>
 						<view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
 							<text class="row-label">回归方程</text>
 							<text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ? formatWeeksAndDays(prevAnalysisResult.GA2) : (prevAnalysisResult.GA2 + ' 周')) : '-' }}</text>
@@ -110,8 +115,8 @@
 					<text class="section-subtitle">停育分析</text>
 					<view class="result-list">
 						<view class="result-item">
-							<text class="row-label">受孕日期</text>
-							<text class="row-value">{{ miscarryAnalysis.conceptionDate }}</text>
+							<text class="row-label">孕0天 (LMP)</text>
+							<text class="row-value">{{ miscarryAnalysis.lastMenstrualPeriod }}</text>
 						</view>
 						<view class="result-item">
 							<text class="row-label">停育日期</text>
@@ -170,6 +175,10 @@
 								<text class="row-label">Robinson公式 (推荐)</text>
 								<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA1) : (analysisResult.GA1 + ' 周') }}</text>
 							</view>
+              <view class="result-item clickable-row" @click="toggleRobinsonFormat">
+                <text class="row-label">Hadlock公式</text>
+                <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA4) : (analysisResult.GA4 + ' 周') }}</text>
+              </view>
 							<view class="result-item clickable-row" @click="toggleRobinsonFormat">
 								<text class="row-label">回归方程</text>
 								<text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA2) : (analysisResult.GA2 + ' 周') }}</text>
@@ -188,7 +197,7 @@
 						<text class="section-subtitle">停育分析</text>
 						<view class="result-list">
 							<view class="result-item">
-								<text class="row-label">受孕日期</text>
+								<text class="row-label">孕0天 (LMP)</text>
 								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
 							<view class="result-item">
@@ -287,7 +296,7 @@ const miscarryAnalysis = computed(() => {
   // 检查是否有必要的数据
   if (!prevAnalysisResult.value || !analysisResult.value) {
     return {
-      conceptionDate: '-',
+      lastMenstrualPeriod: '-',
       miscarryDate: '-',
       naturalMiscarryDate: '-'
     };
@@ -300,23 +309,23 @@ const miscarryAnalysis = computed(() => {
 
   if (!hasValidData) {
     return {
-      conceptionDate: '需要红字日期！',
+      lastMenstrualPeriod: '需要红字日期！',
       miscarryDate: '需要红字日期！',
       naturalMiscarryDate: '需要红字日期！'
     };
   }
 
-  // 计算受孕日期
-  const conceptionDate = calculateConceptionDate(prevAnalysisResult.value['日期'], prevAnalysisResult.value.GA1);
+  // 计算末次月经
+  const lastMenstrualPeriod = calculatelastMenstrualPeriod(prevAnalysisResult.value['日期'], prevAnalysisResult.value.GA1);
   
   // 计算停育日期
-  const miscarryDate = calculateMiscarryDate(conceptionDate, analysisResult.value.GA1);
+  const miscarryDate = calculateMiscarryDate(lastMenstrualPeriod, analysisResult.value.GA1);
   
   // 计算预自然流产日期
   const naturalMiscarryDate = calculateNaturalMiscarryDate(miscarryDate);
 
   return {
-    conceptionDate,
+    lastMenstrualPeriod,
     miscarryDate,
     naturalMiscarryDate
   };
@@ -482,17 +491,21 @@ async function calculateAnalysisResults(result, refs) {
   // 计算孕周
   const GS = parseInt(result["孕囊大小"]);
   const CRL = parseInt(result["胚芽长"]);
-  let GA0, GA1, GA2, GA3;
-  if (GS !== undefined && GS !== null) GA0 = (GS + 30) / 7;       // 0. 孕囊估算（适用于5-6周前的早期评估）
+  const CRL_cm = CRL / 10; // 转换为厘米
+  let GA0, GA1, GA2, GA3, GA4;
+  if (GS !== undefined && GS !== null) GA0 = (0.882 * GS + 33.117) / 7; // 0. 孕囊估算（适用于5-6周前的早期评估）
   if (CRL !== undefined && CRL !== null) {
-    GA1 = (8.052 * Math.pow(CRL * 1.037, 0.5) + 23.73) / 7;       // 1. Robinson公式（国际公认标准方法）
-    GA2 = 5.2876 + (0.1584 * CRL) - (0.0007 * Math.pow(CRL, 2));  // 2. 回归方程（其他研究提出）
-    GA3 = CRL / 10 + 6.5;                                         // 3. 经验法则（简易快速估算）                  
+    GA1 = (8.052 * Math.pow(CRL * 1.037, 0.5) + 23.73) / 7;             // 1. Robinson公式（国际公认标准方法）
+    GA2 = 5.2876 + (0.1584 * CRL) - (0.0007 * Math.pow(CRL, 2));        // 2. 回归方程（其他研究提出）
+    GA3 = CRL / 10 + 6.5;                                               // 3. 经验法则（简易快速估算）
+    // 4. crown–rump length from Hadlock et al.
+    GA4 = Math.exp(1.685 + 0.316 * CRL_cm - 0.049 * Math.pow(CRL_cm, 2) + 0.004 * Math.pow(CRL_cm, 3) - 0.0001 * Math.pow(CRL_cm, 4));
   }
   refs.value.GA0 = GA0 ? GA0.toFixed(2) : '-';
   refs.value.GA1 = GA1 ? GA1.toFixed(2) : '-';
   refs.value.GA2 = GA2 ? GA2.toFixed(2) : '-';
   refs.value.GA3 = GA3 ? GA3.toFixed(2) : '-';
+  refs.value.GA4 = GA4 ? GA4.toFixed(2) : '-';
 }
 
 // 日期格式化函数
@@ -547,8 +560,8 @@ function onDateChange(e, kind) {
   validateDateOrder(true);
 }
 
-// 计算受孕日期（根据超声检查日期和孕周）
-function calculateConceptionDate(examDate, gestationalWeeks) {
+// 计算末次月经（根据超声检查日期和孕周）
+function calculatelastMenstrualPeriod(examDate, gestationalWeeks) {
   if (!examDate || !gestationalWeeks || gestationalWeeks === '-') return '-';
   
   try {
@@ -559,36 +572,36 @@ function calculateConceptionDate(examDate, gestationalWeeks) {
     const checkDate = new Date(examDate);
     if (isNaN(checkDate.getTime())) return '-';
     
-    // 孕周转换为天数，然后从检查日期减去得到受孕日期
-    const daysFromConception = weeks * 7;
-    const conceptionDate = new Date(checkDate.getTime() - daysFromConception * 24 * 60 * 60 * 1000);
+    // 孕周转换为天数，然后从检查日期减去得到末次月经
+    const daysFromlastMenstrual = weeks * 7;
+    const lastMenstrualPeriod = new Date(checkDate.getTime() - daysFromlastMenstrual * 24 * 60 * 60 * 1000);
     
-    const year = conceptionDate.getFullYear();
-    const month = String(conceptionDate.getMonth() + 1).padStart(2, '0');
-    const day = String(conceptionDate.getDate()).padStart(2, '0');
+    const year = lastMenstrualPeriod.getFullYear();
+    const month = String(lastMenstrualPeriod.getMonth() + 1).padStart(2, '0');
+    const day = String(lastMenstrualPeriod.getDate()).padStart(2, '0');
     
     return `${year}-${month}-${day}`;
   } catch (err) {
-    console.error('计算受孕日期失败:', err);
+    console.error('计算末次月经失败:', err);
     return '-';
   }
 }
 
-// 计算停育日期（根据受孕日期和当前报告的孕周）
-function calculateMiscarryDate(conceptionDateStr, currentGestationalWeeks) {
-  if (!conceptionDateStr || !currentGestationalWeeks || conceptionDateStr === '-' || currentGestationalWeeks === '-') return '-';
+// 计算停育日期（根据末次月经和当前报告的孕周）
+function calculateMiscarryDate(lastMenstrualPeriodStr, currentGestationalWeeks) {
+  if (!lastMenstrualPeriodStr || !currentGestationalWeeks || lastMenstrualPeriodStr === '-' || currentGestationalWeeks === '-') return '-';
   
   try {
     const weeks = parseFloat(currentGestationalWeeks);
     if (isNaN(weeks)) return '-';
     
-    // 直接解析YYYY-MM-DD格式的受孕日期
-    const conceptionDate = new Date(conceptionDateStr);
-    if (isNaN(conceptionDate.getTime())) return '-';
+    // 直接解析YYYY-MM-DD格式的末次月经
+    const lastMenstrualPeriod = new Date(lastMenstrualPeriodStr);
+    if (isNaN(lastMenstrualPeriod.getTime())) return '-';
     
     // 根据当前孕周计算停育日期
-    const daysFromConception = weeks * 7;
-    const miscarryDate = new Date(conceptionDate.getTime() + daysFromConception * 24 * 60 * 60 * 1000);
+    const daysFromlastMenstrual = weeks * 7;
+    const miscarryDate = new Date(lastMenstrualPeriod.getTime() + daysFromlastMenstrual * 24 * 60 * 60 * 1000);
     
     const year = miscarryDate.getFullYear();
     const month = String(miscarryDate.getMonth() + 1).padStart(2, '0');
