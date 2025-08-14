@@ -1,24 +1,33 @@
+<!-- 有大量未审计的AI代码 -->
 <template>
 	<view class="container">
 		<view class="content-card">
 			<view class="upload-section">
 				<!-- 当前报告文件选择 -->
-				<uni-file-picker
+				<uni-file-picker v-if="!isLoading"
 					class="picker-btn-wrapper"
 					limit="1"
 					file-mediatype="image"
-					:auto-upload="false"
-					:disable-preview="true"
-          :del-icon="true"
 					@select="onFileSelectCurrent"
 				>
-					<button class="upload-btn" :loading="isLoading" :disabled="isLoading">
+					<button class="upload-btn" :disabled="isLoading">
 						<view class="button-content">
 							<text class="upload-icon">+</text>
-							<text>{{ isLoading ? '分析中...' : '拍摄 / 选择超声报告单' }}</text>
+							<text>拍摄 / 选择超声报告单</text>
 						</view>
 					</button>
 				</uni-file-picker>
+        <!-- 加载中显示进度条 -->
+        <button class="upload-btn" :disabled="true" v-else>
+          <view class="button-content progress-mode">
+            <view class="progress-wrapper">
+              <text class="progress-text">分析中 {{ analysisProgressCurrent }}%</text>
+              <view class="progress-bar">
+                <view class="progress-bar-inner" :style="{ width: analysisProgressCurrent + '%' }"></view>
+              </view>
+            </view>
+          </view>
+        </button>
 				<!-- 测试按钮 -->
 				<!-- <view class="test-buttons">
 					<button @click="executeTest('normal')" class="upload-btn test-btn">
@@ -220,21 +229,29 @@
 						</view>
             <!-- 上传胎停育前报告单 -->
 						<view class="action-buttons">
-							<uni-file-picker
+							<uni-file-picker v-if="!isPrevLoading"
 								class="picker-btn-wrapper"
 								limit="1"
 								file-mediatype="image"
-								:auto-upload="false"
-								:disable-preview="true"
 								@select="onFileSelectPrevious"
 							>
-								<button class="upload-btn prev-btn" :loading="isPrevLoading" :disabled="isPrevLoading">
+								<button class="upload-btn prev-btn" :disabled="isPrevLoading">
 									<view class="button-content">
 										<text class="upload-icon">+</text>
-										<text>{{ isPrevLoading ? '分析中...' : '拍摄 / 选择胎停育前报告单' }}</text>
+										<text>拍摄 / 选择胎停育前报告单</text>
 									</view>
 								</button>
 							</uni-file-picker>
+              <button class="upload-btn prev-btn" :disabled="true" v-else>
+                <view class="button-content progress-mode">
+                  <view class="progress-wrapper">
+                    <text class="progress-text">分析中 {{ analysisProgressPrev }}%</text>
+                    <view class="progress-bar">
+                      <view class="progress-bar-inner" :style="{ width: analysisProgressPrev + '%' }"></view>
+                    </view>
+                  </view>
+                </view>
+              </button>
 				      <!-- 测试按钮 -->
 							<!-- <button @click="executeTest('previous')" class="upload-btn test-btn">
 								<view class="button-content">
@@ -476,7 +493,7 @@ async function handleFileSelect(e, kind){
     let uploadFileObj = f.file || null; // H5 File 对象（若存在）
     const originalSize = f.size; // 可能为 undefined (某些平台)
 
-    if(kind==='previous') isPrevLoading.value = true; else isLoading.value = true;
+    if(kind==='previous') { isPrevLoading.value = true; startProgress('previous'); } else { isLoading.value = true; startProgress('current'); }
     
     // 预览先显示原图（避免等待）
     imageRef.value = uploadPath;
@@ -519,7 +536,7 @@ async function handleFileSelect(e, kind){
     uploadFileUnified(uploadPath, contentType, ext, kind, uploadFileObj);
   } catch(err){
     handleError(err,'选择文件失败','选择文件失败');
-    if(kind==='previous') isPrevLoading.value=false; else isLoading.value=false;
+    if(kind==='previous') { isPrevLoading.value=false; stopProgress('previous'); } else { isLoading.value=false; stopProgress('current'); }
   }
 }
 
@@ -573,13 +590,15 @@ async function uploadFileUnified(filePath, contentType, ext, kind = 'current', f
   } finally {
     if(kind==='previous'){
       isPrevLoading.value = false;
+      stopProgress('previous');
     } else {
       isLoading.value = false;
+      stopProgress('current');
     }
   }
 }
 
-// 统一的分析结果获取函数（以 kind 区分 current/previous）
+// 在获取分析结果成功后不立刻 stop，因为 finally 已处理；如果想在结果返回瞬间让进度条“瞬间完成”可在此设置 99%
 async function getAnalysisResultUnified(fileName, kind = 'current') {
   try {
     updateStatus('分析中...');
@@ -597,6 +616,9 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
       const { resultRef } = getReportRefs(kind);
       calculateAnalysisResults(res.data, resultRef);
       validateDateOrder(true);
+      // 分析完成后稍作延迟再结束进度，给用户反馈完成感
+      if(kind==='previous') { analysisProgressPrev.value = 99; setTimeout(()=>stopProgress('previous'), 300); }
+      else { analysisProgressCurrent.value = 99; setTimeout(()=>stopProgress('current'), 300); }
       updateStatus('分析完成');
       return true;
     } else {
@@ -822,6 +844,43 @@ async function executeTest(testType) {
     showToast('测试异常');
   }
 }
+
+// 进度条相关
+const analysisProgressCurrent = ref(0);
+const analysisProgressPrev = ref(0);
+let progressTimerCurrent = null;
+let progressTimerPrev = null;
+
+function startProgress(kind){
+  const isPrev = kind === 'previous';
+  stopProgress(kind); // 确保清理旧定时器
+  if(isPrev){
+    analysisProgressPrev.value = 0;
+    progressTimerPrev = setInterval(()=>{
+      if(analysisProgressPrev.value < 99){
+        analysisProgressPrev.value = Math.min(99, analysisProgressPrev.value + 3);
+      }
+    },1000);
+  } else {
+    analysisProgressCurrent.value = 0;
+    progressTimerCurrent = setInterval(()=>{
+      if(analysisProgressCurrent.value < 99){
+        analysisProgressCurrent.value = Math.min(99, analysisProgressCurrent.value + 3);
+      }
+    },1000);
+  }
+}
+
+function stopProgress(kind){
+  const isPrev = kind === 'previous';
+  if(isPrev){
+    if(progressTimerPrev){ clearInterval(progressTimerPrev); progressTimerPrev = null; }
+    analysisProgressPrev.value = 0;
+  } else {
+    if(progressTimerCurrent){ clearInterval(progressTimerCurrent); progressTimerCurrent = null; }
+    analysisProgressCurrent.value = 0;
+  }
+}
 </script>
 
 <style scoped>
@@ -832,7 +891,6 @@ async function executeTest(testType) {
 	align-items: center;
 	min-height: 100%;
 	box-sizing: border-box;
-	background-color: #f7f9fc; /* 柔和的浅蓝色背景，替代纯白 */
 }
 
 /* 主体内容卡片 */
@@ -1176,4 +1234,12 @@ async function executeTest(testType) {
 	border-radius: 16rpx !important;
   border: none !important;
 }
+
+.progress-mode { width:100%; }
+.progress-wrapper { display:flex; flex-direction:column; gap:12rpx; flex:1; }
+.progress-text { font-size:24rpx; font-weight:600; }
+.progress-bar { width:100%; height:14rpx; background:rgba(255,255,255,0.35); border-radius:8rpx; overflow:hidden; }
+.progress-bar-inner { height:100%; background:#ffffff; width:0%; transition: width 0.8s ease; border-radius:8rpx; }
+/* 停育前按钮进度可复用同样样式，如需区分可根据 .prev-btn .progress-bar-inner 自定义颜色 */
+.prev-btn .progress-bar-inner { background:#4a4e91; }
 </style>
