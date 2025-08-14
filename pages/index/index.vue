@@ -281,6 +281,16 @@
 				</view>
 			</view>
 		</uni-popup>
+
+		<!-- 页脚 -->
+		<view class="page-footer">
+			<text class="footer-line">1、仅适用于孕早期（前14周内）。\n</text>
+			<text class="footer-line">2、计算结果仅供参考，不提供医疗诊断或治疗建议。</text>
+			<view class="footer-line" @click="openExternal('https://zhuanlan.zhihu.com/p/18132159339')">
+				<text class="footer-link">3、自然流产科普知识点我。</text>
+			</view>
+			<text class="footer-line meta">© 2025 魂道 MiscarryCalc · v1.0.0</text>
+		</view>
 	</view>
 </template>
 
@@ -386,6 +396,27 @@ const miscarryAnalysis = computed(() => {
 // 工具函数：统一的Toast显示
 function showToast(title, icon = 'none') {
   uni.showToast({ title, icon });
+}
+// 新增：跨平台打开外部链接
+function openExternal(url){
+  // #ifdef H5
+  window.open(url,'_blank');
+  // #endif
+  // #ifdef APP-PLUS
+  try { plus.runtime.openURL(url); } catch(e){ uni.setClipboardData({data:url}); showToast('已复制链接'); }
+  // #endif
+  // #ifdef MP-WEIXIN
+  wx.setClipboardData({
+    data: url,
+    success(){
+      uni.showModal({
+        title:'提示',
+        content:'小程序限制，已复制链接，请在浏览器中打开。',
+        showCancel:false
+      });
+    }
+  });
+  // #endif
 }
 
 // 工具函数：统一的状态管理
@@ -1242,4 +1273,9 @@ function stopProgress(kind){
 .progress-bar-inner { height:100%; background:#ffffff; width:0%; transition: width 0.8s ease; border-radius:8rpx; }
 /* 停育前按钮进度可复用同样样式，如需区分可根据 .prev-btn .progress-bar-inner 自定义颜色 */
 .prev-btn .progress-bar-inner { background:#4a4e91; }
+
+/* 页脚样式 */
+.page-footer { width:100%; max-width:650rpx; padding:40rpx 30rpx 80rpx; box-sizing:border-box; text-align:center; color:#8a9399; font-size:22rpx; line-height:1.6; }
+.page-footer .meta { display:block; margin-top:12rpx; font-size:20rpx; color:#b0b7bc; }
+.footer-link { color:#66e0c6; text-decoration:underline; font-weight:600; cursor:pointer; }
 </style>
