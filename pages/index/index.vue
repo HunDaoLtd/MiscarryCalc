@@ -1,15 +1,35 @@
+<!-- 有大量未审计的AI代码 -->
 <template>
 	<view class="container">
 		<view class="content-card">
 			<view class="upload-section">
-				<button @click="chooseImage" :loading="isLoading" :disabled="isLoading" class="upload-btn">
-					<view class="button-content">
-						<text class="upload-icon">+</text>
-						<text>{{ isLoading ? '分析中...' : '拍摄超声报告单' }}</text>
-					</view>
-				</button>
+				<!-- 当前报告文件选择 -->
+				<uni-file-picker v-if="!isLoading"
+					class="picker-btn-wrapper"
+					limit="1"
+					file-mediatype="image"
+					@select="onFileSelectCurrent"
+				>
+					<button class="upload-btn" :disabled="isLoading">
+						<view class="button-content">
+							<text class="upload-icon">+</text>
+							<text>拍摄 / 选择超声报告单</text>
+						</view>
+					</button>
+				</uni-file-picker>
+        <!-- 加载中显示进度条 -->
+        <button class="upload-btn" :disabled="true" v-else>
+          <view class="button-content progress-mode">
+            <view class="progress-wrapper">
+              <text class="progress-text">分析中 {{ analysisProgressCurrent }}%</text>
+              <view class="progress-bar">
+                <view class="progress-bar-inner" :style="{ width: analysisProgressCurrent + '%' }"></view>
+              </view>
+            </view>
+          </view>
+        </button>
 				<!-- 测试按钮 -->
-				<view class="test-buttons">
+				<!-- <view class="test-buttons">
 					<button @click="executeTest('normal')" class="upload-btn test-btn">
 						<view class="button-content">
 							<text class="upload-icon">🧪</text>
@@ -22,9 +42,8 @@
 							<text>停育测试</text>
 						</view>
 					</button>
-				</view>
+				</view> -->
 			</view>
-
 			<!-- 并列显示两个分析报告 -->
 			<view v-if="analysisResult && analysisResult['是否停育'] && prevAnalysisResult" class="comparison-section">
 				<!-- 报告标题行 -->
@@ -208,20 +227,38 @@
 								<text class="row-value">{{ '需分析停育前报告' }}</text>
 							</view>
 						</view>
-            <!-- 上传胎停育前报告单按钮 -->
+            <!-- 上传胎停育前报告单 -->
 						<view class="action-buttons">
-							<button @click="choosePrevImage" :loading="isPrevLoading" :disabled="isPrevLoading" class="upload-btn prev-btn">
-								<view class="button-content">
-									<text class="upload-icon">+</text>
-									<text>{{ isPrevLoading ? '分析中...' : '拍摄胎停育前报告单' }}</text>
-								</view>
-							</button>
-							<button @click="executeTest('previous')" class="upload-btn test-btn">
+							<uni-file-picker v-if="!isPrevLoading"
+								class="picker-btn-wrapper"
+								limit="1"
+								file-mediatype="image"
+								@select="onFileSelectPrevious"
+							>
+								<button class="upload-btn prev-btn" :disabled="isPrevLoading">
+									<view class="button-content">
+										<text class="upload-icon">+</text>
+										<text>拍摄 / 选择胎停育前报告单</text>
+									</view>
+								</button>
+							</uni-file-picker>
+              <button class="upload-btn prev-btn" :disabled="true" v-else>
+                <view class="button-content progress-mode">
+                  <view class="progress-wrapper">
+                    <text class="progress-text">分析中 {{ analysisProgressPrev }}%</text>
+                    <view class="progress-bar">
+                      <view class="progress-bar-inner" :style="{ width: analysisProgressPrev + '%' }"></view>
+                    </view>
+                  </view>
+                </view>
+              </button>
+				      <!-- 测试按钮 -->
+							<!-- <button @click="executeTest('previous')" class="upload-btn test-btn">
 								<view class="button-content">
 									<text class="upload-icon">+</text>
 									<text>胎停育前测试</text>
 								</view>
-							</button>
+							</button> -->
 						</view>
 					</view>
         </view>
@@ -244,6 +281,16 @@
 				</view>
 			</view>
 		</uni-popup>
+
+		<!-- 页脚 -->
+		<view class="page-footer">
+			<text class="footer-line">1、仅适用于孕早期（前14周内）。\n</text>
+			<text class="footer-line">2、计算结果仅供参考，不提供医疗诊断或治疗建议。</text>
+			<view class="footer-line" @click="openExternal('https://zhuanlan.zhihu.com/p/18132159339')">
+				<text class="footer-link">3、自然流产科普知识点我。</text>
+			</view>
+			<text class="footer-line meta">© 2025 魂道 MiscarryCalc · v1.0.0</text>
+		</view>
 	</view>
 </template>
 
@@ -350,6 +397,27 @@ const miscarryAnalysis = computed(() => {
 function showToast(title, icon = 'none') {
   uni.showToast({ title, icon });
 }
+// 新增：跨平台打开外部链接
+function openExternal(url){
+  // #ifdef H5
+  window.open(url,'_blank');
+  // #endif
+  // #ifdef APP-PLUS
+  try { plus.runtime.openURL(url); } catch(e){ uni.setClipboardData({data:url}); showToast('已复制链接'); }
+  // #endif
+  // #ifdef MP-WEIXIN
+  wx.setClipboardData({
+    data: url,
+    success(){
+      uni.showModal({
+        title:'提示',
+        content:'小程序限制，已复制链接，请在浏览器中打开。',
+        showCancel:false
+      });
+    }
+  });
+  // #endif
+}
 
 // 工具函数：统一的状态管理
 function updateStatus(message) {
@@ -367,111 +435,201 @@ function handleError(error, defaultMessage, statusMessage) {
 function getFileTypeInfo(filePath) {
   const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
   let contentType = 'application/octet-stream';
-  
-  const typeMap = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.bmp': 'image/bmp',
-    '.webp': 'image/webp',
-    '.avif': 'image/avif'
-  };
-  
+  const typeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.bmp': 'image/bmp', '.webp': 'image/webp', '.avif': 'image/avif' };
   contentType = typeMap[ext] || contentType;
   return { ext, contentType };
 }
 
-// 统一的图片选择函数（以 kind 区分 current/previous）
-async function chooseImageUnified(kind = 'current') {
-  try {
-    updateStatus('选择文件中...');
+// ====== 新增：图片压缩相关工具 ======
+const MAX_UPLOAD_SIZE = 1024 * 1024; // 1M
+const QUALITY_STEPS = [80, 70, 60, 50, 40, 30];
 
-    const res = await uni.chooseImage({
-      count: 1,
-      sourceType: ['album', 'camera'],
-      sizeType: ['compressed']
-    });
-
-    const filePath = res.tempFilePaths[0];
-
-    const { imageRef } = getReportRefs(kind);
-    imageRef.value = filePath;
-
-    // 根据类型设置对应的 loading 状态
-    if (kind === 'previous') {
-      isPrevLoading.value = true;
-    } else {
-      isLoading.value = true;
-    }
-    
-    const { ext, contentType } = getFileTypeInfo(filePath);
-    await uploadFileUnified(filePath, contentType, ext, kind);
-  } catch (err) {
-    handleError(err, '选择文件失败', '选择文件失败');
-  } finally {
-    // 根据类型重置对应的 loading 状态
-    if (kind === 'previous') {
-      isPrevLoading.value = false;
-    } else {
-      isLoading.value = false;
+async function compressNativeLoop(path) {
+  // 仅 App / 小程序平台可用
+  let currentPath = path;
+  for (const q of QUALITY_STEPS) {
+    try {
+      const r = await uni.compressImage({ src: currentPath, quality: q });
+      const newPath = (r.tempFilePath || r.tempFiles && r.tempFiles[0] && r.tempFiles[0].path) || r;
+      if (!newPath) continue;
+      const info = await uni.getFileInfo({ filePath: newPath });
+      currentPath = newPath;
+      if (info.size <= MAX_UPLOAD_SIZE) {
+        return { path: currentPath, size: info.size, hitLimit: true };
+      }
+    } catch (e) {
+      // 压缩失败则继续尝试下一个质量
+      console.warn('compressImage 失败(quality=' + q + '):', e);
     }
   }
+  try {
+    const info = await uni.getFileInfo({ filePath: currentPath });
+    return { path: currentPath, size: info.size, hitLimit: info.size <= MAX_UPLOAD_SIZE };
+  } catch { return { path: currentPath, size: NaN, hitLimit: false }; }
 }
 
-// 选择主报告单
-async function chooseImage() {
-  await chooseImageUnified('current');
+// H5 压缩：使用 canvas 逐步降低质量；可同时按最大宽度限制
+async function compressH5File(file, maxWidth = 1600) {
+  const createImage = (file) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+  function dataURLToFile(dataURL, filename) {
+    const arr = dataURL.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length; const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    return new File([u8arr], filename, { type: mime });
+  }
+  const img = await createImage(file);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  let { width, height } = img;
+  if (width > maxWidth) {
+    const ratio = maxWidth / width; width = maxWidth; height = Math.round(height * ratio);
+  }
+  canvas.width = width; canvas.height = height; ctx.drawImage(img, 0, 0, width, height);
+
+  let outFile = file;
+  for (const q of [0.8, 0.7, 0.6, 0.5, 0.4, 0.32, 0.28]) {
+    const dataURL = canvas.toDataURL('image/jpeg', q);
+    const f2 = dataURLToFile(dataURL, file.name.replace(/\.[^.]+$/, '') + '_c.jpg');
+    if (f2.size <= MAX_UPLOAD_SIZE) { outFile = f2; break; }
+    outFile = f2; // 继续循环尝试更低质量
+  }
+  return outFile;
 }
 
-// 选择胎停育前报告单
-async function choosePrevImage() {
-  await chooseImageUnified('previous');
+// ====== 修改：文件选择与压缩上传 ======
+// 文件选择回调（当前报告）
+function onFileSelectCurrent(e){
+  handleFileSelect(e, 'current');
+}
+// 文件选择回调（停育前报告）
+function onFileSelectPrevious(e){
+  handleFileSelect(e, 'previous');
+}
+
+async function handleFileSelect(e, kind){
+  try {
+    const files = e.tempFiles || [];
+    if(!files.length){ showToast('未选择文件'); return; }
+    let f = files[0];
+    const { imageRef } = getReportRefs(kind);
+    let originalPath = f.path || f.url || '';
+    let uploadPath = originalPath;
+    let uploadFileObj = f.file || null; // H5 File 对象（若存在）
+    const originalSize = f.size; // 可能为 undefined (某些平台)
+
+    if(kind==='previous') { isPrevLoading.value = true; startProgress('previous'); } else { isLoading.value = true; startProgress('current'); }
+    
+    // 预览先显示原图（避免等待）
+    imageRef.value = uploadPath;
+
+    // 判断是否需要压缩
+    if (originalSize && originalSize > MAX_UPLOAD_SIZE) {
+      updateStatus('压缩中...');
+      let compressedOk = false;
+      // H5: 有 File 对象则使用 canvas 压缩
+      if (uploadFileObj && typeof window !== 'undefined') {
+        try {
+          const compressedFile = await compressH5File(uploadFileObj);
+          if (compressedFile && compressedFile.size < uploadFileObj.size) {
+            uploadFileObj = compressedFile;
+            imageRef.value = URL.createObjectURL(compressedFile); // 更新预览
+            compressedOk = compressedFile.size <= MAX_UPLOAD_SIZE;
+            console.log('H5 压缩结果 size=', compressedFile.size);
+          }
+        } catch (err) { console.warn('H5 压缩失败，使用原图', err); }
+      } else {
+        // 原生/小程序：使用 uni.compressImage 循环质量
+        try {
+          const r = await compressNativeLoop(uploadPath);
+            uploadPath = r.path; // 新路径
+            if (r.hitLimit) compressedOk = true;
+            imageRef.value = uploadPath; // 更新预览
+            console.log('Native 压缩结果 size=', r.size);
+        } catch (err) { console.warn('Native 压缩失败，使用原图', err); }
+      }
+      if (!compressedOk) {
+        showToast('已尝试压缩，仍可能超过1M');
+      } else {
+        showToast('压缩完成');
+      }
+    }
+
+    const name = f.name || f.url || 'image.jpg';
+    const { ext, contentType } = getFileTypeInfo(name);
+    // 上传：H5 如果有 uploadFileObj 会走 fetch 分支，原生走 uni.uploadFile
+    uploadFileUnified(uploadPath, contentType, ext, kind, uploadFileObj);
+  } catch(err){
+    handleError(err,'选择文件失败','选择文件失败');
+    if(kind==='previous') { isPrevLoading.value=false; stopProgress('previous'); } else { isLoading.value=false; stopProgress('current'); }
+  }
 }
 
 // 统一的文件上传函数（以 kind 区分 current/previous）
-async function uploadFileUnified(filePath, contentType, ext, kind = 'current') {
+async function uploadFileUnified(filePath, contentType, ext, kind = 'current', fileObj = null) {
   if (!ext) ext = '.jpg';
   try {
     updateStatus('上传中...');
-
     const { resultRef, prefix } = getReportRefs(kind);
     resultRef.value = '';
-
     const fileName = `${prefix}${Date.now()}${ext}`;
-    const apiUrl = `https://apps.hundao.xyz/rendered/${fileName}`;
+    const apiUrl = `https://apps.hundao.xyz/1_MiscarryCalc/rendered/${fileName}`;
 
-    await new Promise((resolve, reject) => {
-      const task = uni.uploadFile({
-        url: apiUrl,
-        filePath: filePath,
-        name: 'file',
-        fileType: 'image',
-        formData: { 'filename': fileName },
-        header: { 'Content-Type': contentType },
-        success: (uploadRes) => {
-          if (uploadRes.statusCode === 200) {
-            getAnalysisResultUnified(fileName, kind).then(resolve).catch(reject);
-          } else {
-            reject(new Error(`上传失败，状态码: ${uploadRes.statusCode}`));
+    // 如果是 H5 且有原生 File 对象则用 fetch，否则 fallback 到 uni.uploadFile
+    if(fileObj && typeof File !== 'undefined' && fileObj instanceof File){
+      const formData = new FormData();
+      formData.append('file', fileObj, fileName);
+      formData.append('filename', fileName);
+      const resp = await fetch(apiUrl, { method: 'POST', body: formData });
+      if(!resp.ok){
+        throw new Error('上传失败，状态码: '+resp.status);
+      }
+      await getAnalysisResultUnified(fileName, kind);
+    } else {
+      await new Promise((resolve, reject) => {
+        const task = uni.uploadFile({
+          url: apiUrl,
+          filePath: filePath,
+          name: 'file',
+          fileType: 'image',
+          formData: { 'filename': fileName },
+          header: { 'Content-Type': contentType },
+          success: (uploadRes) => {
+            if (uploadRes.statusCode === 200) {
+              getAnalysisResultUnified(fileName, kind).then(resolve).catch(reject);
+            } else {
+              reject(new Error(`上传失败，状态码: ${uploadRes.statusCode}`));
+            }
+          },
+          fail: (err) => {
+            reject(new Error(`上传失败: ${err.errMsg}`));
           }
-        },
-        fail: (err) => {
-          reject(new Error(`上传失败: ${err.errMsg}`));
-        }
+        });
+        task.onProgressUpdate(function(res) {
+          updateStatus(`上传中 ${res.progress}%`);
+        });
       });
-
-      task.onProgressUpdate(function(res) {
-        updateStatus(`上传中 ${res.progress}%`);
-      });
-    });
-
+    }
   } catch (err) {
     handleError(err, '上传失败', '上传失败: ' + err.message);
+  } finally {
+    if(kind==='previous'){
+      isPrevLoading.value = false;
+      stopProgress('previous');
+    } else {
+      isLoading.value = false;
+      stopProgress('current');
+    }
   }
 }
 
-// 统一的分析结果获取函数（以 kind 区分 current/previous）
+// 在获取分析结果成功后不立刻 stop，因为 finally 已处理；如果想在结果返回瞬间让进度条“瞬间完成”可在此设置 99%
 async function getAnalysisResultUnified(fileName, kind = 'current') {
   try {
     updateStatus('分析中...');
@@ -489,6 +647,9 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
       const { resultRef } = getReportRefs(kind);
       calculateAnalysisResults(res.data, resultRef);
       validateDateOrder(true);
+      // 分析完成后稍作延迟再结束进度，给用户反馈完成感
+      if(kind==='previous') { analysisProgressPrev.value = 99; setTimeout(()=>stopProgress('previous'), 300); }
+      else { analysisProgressCurrent.value = 99; setTimeout(()=>stopProgress('current'), 300); }
       updateStatus('分析完成');
       return true;
     } else {
@@ -503,9 +664,9 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
 // 分析结果计算
 async function calculateAnalysisResults(result, refs) {
   refs.value = result;
-  // 计算孕周
-  const GS = parseInt(result["孕囊大小"]);
-  const CRL = parseInt(result["胚芽长"]);
+  // 计算孕周，处理胚芽长为空字符串的情况，将其转换为0
+  const GS = parseInt(result["孕囊大小"] || "0");
+  const CRL = parseInt(result["胚芽长"] || "0");
   const CRL_cm = CRL / 10; // 转换为厘米
   let GA0, GA1, GA2, GA3, GA4;
   if (GS !== undefined && GS !== null) GA0 = (0.882 * GS + 33.117) / 7; // 0. 孕囊估算（适用于5-6周前的早期评估）
@@ -632,9 +793,9 @@ function showNaturalMiscarryModal() {
     const d32 = addDaysYMD(miscarryDateStr, 32);
 
     naturalData.value = [
-      { label: `${d15} 前发动`, value: '25% 🟩🟨🟨🟨' },
-      { label: `${d23} 前发动`, value: '50% 🟩🟩🟨🟨' },
-      { label: `${d32} 前发动`, value: '75% 🟩🟩🟩🟨' }
+      { label: `${d15} 前发动`, value: '🟩🟨🟨🟨 25%' },
+      { label: `${d23} 前发动`, value: '🟩🟩🟨🟨 50%' },
+      { label: `${d32} 前发动`, value: '🟩🟩🟩🟨 75%' }
     ];
 
     naturalPopup.value && naturalPopup.value.open();
@@ -666,19 +827,19 @@ function addDaysYMD(dateStr, days) {
 async function executeTest(testType) {
   const testConfig = {
     'normal': {
-      imageUrl: 'https://apps.hundao.xyz/rendered/B08.jpg',
+      imageUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/rendered/B08.jpg',
       apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test',
       resultRef: analysisResult,
       imageRef: imageUrl
     },
     'miscarry': {
-      imageUrl: 'https://apps.hundao.xyz/rendered/B02.jpg',
+      imageUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/rendered/B02.jpg',
       apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test2',
       resultRef: analysisResult,
       imageRef: imageUrl
     },
     'previous': {
-      imageUrl: 'https://apps.hundao.xyz/rendered/B01.jpg',
+      imageUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/rendered/B01.jpg',
       apiUrl: 'https://apps.hundao.xyz/1_MiscarryCalc/analysis/test4',
       resultRef: prevAnalysisResult,
       imageRef: prevImageUrl
@@ -714,6 +875,43 @@ async function executeTest(testType) {
     showToast('测试异常');
   }
 }
+
+// 进度条相关
+const analysisProgressCurrent = ref(0);
+const analysisProgressPrev = ref(0);
+let progressTimerCurrent = null;
+let progressTimerPrev = null;
+
+function startProgress(kind){
+  const isPrev = kind === 'previous';
+  stopProgress(kind); // 确保清理旧定时器
+  if(isPrev){
+    analysisProgressPrev.value = 0;
+    progressTimerPrev = setInterval(()=>{
+      if(analysisProgressPrev.value < 99){
+        analysisProgressPrev.value = Math.min(99, analysisProgressPrev.value + 3);
+      }
+    },1000);
+  } else {
+    analysisProgressCurrent.value = 0;
+    progressTimerCurrent = setInterval(()=>{
+      if(analysisProgressCurrent.value < 99){
+        analysisProgressCurrent.value = Math.min(99, analysisProgressCurrent.value + 3);
+      }
+    },1000);
+  }
+}
+
+function stopProgress(kind){
+  const isPrev = kind === 'previous';
+  if(isPrev){
+    if(progressTimerPrev){ clearInterval(progressTimerPrev); progressTimerPrev = null; }
+    analysisProgressPrev.value = 0;
+  } else {
+    if(progressTimerCurrent){ clearInterval(progressTimerCurrent); progressTimerCurrent = null; }
+    analysisProgressCurrent.value = 0;
+  }
+}
 </script>
 
 <style scoped>
@@ -724,7 +922,6 @@ async function executeTest(testType) {
 	align-items: center;
 	min-height: 100%;
 	box-sizing: border-box;
-	background-color: #f7f9fc; /* 柔和的浅蓝色背景，替代纯白 */
 }
 
 /* 主体内容卡片 */
@@ -1051,4 +1248,34 @@ async function executeTest(testType) {
 	box-shadow: 0 4rpx 12rpx rgba(55, 168, 152, 0.3);
 	transition: all 0.2s ease-in-out;
 }
+
+/* 文件选择器样式 */
+:deep(.file-picker__box) {
+	/* width: 168rpx !important; */
+  width:100% !important;
+	height: 150rpx !important;
+	border-radius: 16rpx !important;
+	padding-top: 0;
+	/* .file-picker__progress {
+		display: none;
+	}	 */
+}
+
+:deep(.file-picker__box-content) {
+	border-radius: 16rpx !important;
+  border: none !important;
+}
+
+.progress-mode { width:100%; }
+.progress-wrapper { display:flex; flex-direction:column; gap:12rpx; flex:1; }
+.progress-text { font-size:24rpx; font-weight:600; }
+.progress-bar { width:100%; height:14rpx; background:rgba(255,255,255,0.35); border-radius:8rpx; overflow:hidden; }
+.progress-bar-inner { height:100%; background:#ffffff; width:0%; transition: width 0.8s ease; border-radius:8rpx; }
+/* 停育前按钮进度可复用同样样式，如需区分可根据 .prev-btn .progress-bar-inner 自定义颜色 */
+.prev-btn .progress-bar-inner { background:#4a4e91; }
+
+/* 页脚样式 */
+.page-footer { width:100%; max-width:650rpx; padding:40rpx 30rpx 80rpx; box-sizing:border-box; text-align:center; color:#8a9399; font-size:22rpx; line-height:1.6; }
+.page-footer .meta { display:block; margin-top:12rpx; font-size:20rpx; color:#b0b7bc; }
+.footer-link { color:#66e0c6; text-decoration:underline; font-weight:600; cursor:pointer; }
 </style>
