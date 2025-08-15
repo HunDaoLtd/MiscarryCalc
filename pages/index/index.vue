@@ -653,7 +653,14 @@ async function getAnalysisResultUnified(fileName, kind = 'current') {
       updateStatus('分析完成');
       return true;
     } else {
-      throw new Error(`分析失败，状态码: ${res.statusCode}`);
+      // 原: throw new Error(`分析失败，状态码: ${res.statusCode}`);
+      uni.showModal({
+        title: '分析失败',
+        content: `状态码: ${res.statusCode}，请稍后重试。（最近GPT5不稳定，多尝试几次）`,
+        showCancel: false,
+        confirmText: '知道了'
+      });
+      // throw new Error(`分析失败，状态码: ${res.statusCode}`);
     }
   } catch (err) {
     handleError(err, '获取分析结果失败', '分析失败: ' + err.message);
