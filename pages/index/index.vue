@@ -3,7 +3,7 @@
   <view class="container">
     <view class="content-card">
       <view class="upload-section">
-        <!-- 当前报告文件选择 -->
+        <!-- 上方按钮：当前报告文件选择 -->
         <uni-file-picker v-if="!isLoading" class="picker-btn-wrapper" limit="1" file-mediatype="image"
           @select="onFileSelectCurrent">
           <button class="upload-btn" :disabled="isLoading">
@@ -66,7 +66,7 @@
           </view>
           <view class="comparison-row">
             <text class="row-label">是否停育</text>
-            <text class="row-value">{{ prevAnalysisResult['是否停育'] ? '是' : '否' }}</text>
+            <text class="row-value" :class="{ 'date-invalid': prevAnalysisResult['是否停育'] }">{{ prevAnalysisResult['是否停育'] ? '是' : '否' }}</text>
             <text class="row-value">{{ analysisResult['是否停育'] ? '是' : '否' }}</text>
           </view>
           <view class="comparison-row">
@@ -87,7 +87,7 @@
           <!-- 孕囊估算：当任一报告没有胚芽长时显示 -->
           <view v-if="!analysisResult['胚芽长'] || !prevAnalysisResult['胚芽长']" class="comparison-row clickable-row"
             @click="toggleGAsFormat">
-            <text class="row-label">孕囊估算</text>
+            <text class="row-label">孕囊估算 (误差大)</text>
             <text class="row-value">{{ !prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ?
               formatWeeksAndDays(prevAnalysisResult.GA0) : (prevAnalysisResult.GA0 + ' 周')) : '-' }}</text>
             <text class="row-value">{{ !analysisResult['胚芽长'] ? (showWeeksAndDays ?
@@ -132,15 +132,15 @@
           <view class="result-list">
             <view class="result-item">
               <text class="row-label">孕0天 (LMP)</text>
-              <text class="row-value">{{ formatYMD(miscarryAnalysis.lastMenstrualPeriod) }}</text>
+              <text class="row-value">{{ formatMiscarryAnalysis(miscarryAnalysis.lastMenstrualPeriod) }}</text>
             </view>
             <view class="result-item">
               <text class="row-label">停育日期</text>
-              <text class="row-value">{{ formatYMD(miscarryAnalysis.miscarryDate) }}</text>
+              <text class="row-value">{{ formatMiscarryAnalysis(miscarryAnalysis.miscarryDate) }}</text>
             </view>
             <view class="result-item clickable-row" @click="showNaturalMiscarryModal">
               <text class="row-label">预自然流产日</text>
-              <text class="row-value">{{ formatYMD(miscarryAnalysis.naturalMiscarryDate) }}</text>
+              <text class="row-value">{{ formatMiscarryAnalysis(miscarryAnalysis.naturalMiscarryDate) }}</text>
             </view>
           </view>
         </view>
@@ -148,6 +148,7 @@
 
       <!-- ========== 单独显示一个分析报告 ========== -->
       <view v-else-if="analysisResult" class="result-section">
+        <!-- 图片预览区域 -->
         <view v-if="imageUrl && !prevImageUrl" class="preview-section">
           <text class="section-title">图片预览</text>
           <image :src="imageUrl" mode="aspectFit" class="preview-image"></image>
@@ -183,7 +184,7 @@
           <text class="section-subtitle">孕周估算</text>
           <view class="result-list">
             <view v-if="!analysisResult['胚芽长']" class="result-item clickable-row" @click="toggleGAsFormat">
-              <text class="row-label">孕囊估算</text>
+              <text class="row-label">孕囊估算 (误差大)</text>
               <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA0) : (analysisResult.GA0
                 + ' 周') }}</text>
             </view>
@@ -230,33 +231,33 @@
                 <text class="row-value">{{ '需分析停育前报告' }}</text>
               </view>
             </view>
-            <!-- 上传胎停育前报告单 -->
-            <view class="action-buttons">
-              <uni-file-picker v-if="!isPrevLoading" class="picker-btn-wrapper" limit="1" file-mediatype="image"
-                @select="onFileSelectPrevious">
-                <button class="upload-btn prev-btn" :disabled="isPrevLoading">
-                  <view class="button-content">
-                    <text class="upload-icon">+</text>
-                    <text>拍摄 / 选择胎停育前报告单</text>
-                  </view>
-                </button>
-              </uni-file-picker>
-              <button class="upload-btn prev-btn loading-btn" :disabled="true" v-else>
-                <view class="button-content progress-mode">
-                  <view class="tech-overlay"></view>
-                  <view class="progress-wrapper">
-                    <text class="progress-text">分析中 {{ analysisProgressPrev }}%</text>
-                    <view class="progress-bar">
-                      <view class="progress-bar-inner" :style="{ width: analysisProgressPrev + '%' }"></view>
-                    </view>
-                    <view class="nano-spinner" />
-                  </view>
-                </view>
-              </button>
-            </view>
           </view>
         </view>
+      </view>
 
+      <!-- 下方按钮：胎停育前报告单选择 -->
+      <view class="upload-section" v-if="analysisResult && analysisResult['是否停育']">
+        <uni-file-picker v-if="!isPrevLoading" class="picker-btn-wrapper" limit="1" file-mediatype="image"
+          @select="onFileSelectPrevious">
+          <button class="upload-btn prev-btn" :disabled="isPrevLoading">
+            <view class="button-content">
+              <text class="upload-icon">+</text>
+              <text>拍摄 / 选择胎停育前报告单</text>
+            </view>
+          </button>
+        </uni-file-picker>
+        <button class="upload-btn prev-btn loading-btn" :disabled="true" v-else>
+          <view class="button-content progress-mode">
+            <view class="tech-overlay"></view>
+            <view class="progress-wrapper">
+              <text class="progress-text">分析中 {{ analysisProgressPrev }}%</text>
+              <view class="progress-bar">
+                <view class="progress-bar-inner" :style="{ width: analysisProgressPrev + '%' }"></view>
+              </view>
+              <view class="nano-spinner" />
+            </view>
+          </view>
+        </button>
       </view>
     </view>
 
@@ -312,7 +313,10 @@ const isPrevLoading = ref(false);
 // 控制Robinson公式显示格式（true: 周+天格式, false: 周格式）
 const showWeeksAndDays = ref(false);
 
-// 新增：日期顺序校验
+// 停育前报告是否异常（自身被识别停育）
+const isPrevReportInvalid = computed(() => !!(prevAnalysisResult.value && prevAnalysisResult.value['是否停育']));
+
+// 日期顺序校验
 const isDateOrderInvalid = ref(false);
 const hasShownInvalidDateToast = ref(false);
 function validateDateOrder(showHint = true) {
@@ -331,7 +335,7 @@ function validateDateOrder(showHint = true) {
     }
     const invalid = currDate < prevDate;
     if (invalid && showHint && !hasShownInvalidDateToast.value) {
-      showToast('当前报告日期早于停育前报告日期，请核对');
+      showToast('当前报告日期早于停育前报告日期，请核对', 'error');
       hasShownInvalidDateToast.value = true;
     }
     if (!invalid) {
@@ -359,10 +363,19 @@ const miscarryAnalysis = computed(() => {
       naturalMiscarryDate: null
     };
   }
+  // 若停育前报告本身被识别为停育，视为异常，禁止计算
+  if (isPrevReportInvalid.value) {
+    return {
+      lastMenstrualPeriod: null,
+      miscarryDate: null,
+      naturalMiscarryDate: null
+    };
+  }
 
-  const hasValidData = prevAnalysisResult.value['日期'] &&
-    prevAnalysisResult.value.GA1 &&
-    analysisResult.value.GA1;
+  // 判定依据改为原始测量值：上一份与当前报告各自至少存在 “胚芽长” 或 “孕囊大小” 之一
+  const hasPrevRaw = !!(prevAnalysisResult.value['胚芽长'] || prevAnalysisResult.value['孕囊大小']);
+  const hasCurrRaw = !!(analysisResult.value['胚芽长'] || analysisResult.value['孕囊大小']);
+  const hasValidData = prevAnalysisResult.value['日期'] && hasPrevRaw && hasCurrRaw;
 
   if (!hasValidData) {
     return {
@@ -373,10 +386,11 @@ const miscarryAnalysis = computed(() => {
   }
 
   // 计算末次月经
-  const lastMenstrualPeriod = calculatelastMenstrualPeriod(prevAnalysisResult.value['日期'], prevAnalysisResult.value.GA1);
-
+  const prevGA = prevAnalysisResult.value['胚芽长'] ? prevAnalysisResult.value.GA1 : prevAnalysisResult.value.GA0;
+  const currGA = analysisResult.value['胚芽长'] ? analysisResult.value.GA1 : analysisResult.value.GA0;
+  const lastMenstrualPeriod = calculatelastMenstrualPeriod(prevAnalysisResult.value['日期'], prevGA);
   // 计算停育日期
-  const miscarryDate = calculateMiscarryDate(lastMenstrualPeriod, analysisResult.value.GA1);
+  const miscarryDate = calculateMiscarryDate(lastMenstrualPeriod, currGA);
 
   // 计算预自然流产日期
   const naturalMiscarryDate = calculateNaturalMiscarryDate(miscarryDate);
@@ -660,7 +674,7 @@ async function uploadFileUnified(filePath, contentType, fileName, kind = 'curren
   }
 }
 
-// 统一的分析处理：更新进度 / 结果计算 / 校验
+// 分析处理
 async function processAnalysis(fileName, kind = 'current') {
   try {
     updateStatus('分析中...');
@@ -674,8 +688,11 @@ async function processAnalysis(fileName, kind = 'current') {
       validateDateOrder(true);
       if (kind === 'previous') { analysisProgressPrev.value = 100; setTimeout(() => stopProgress('previous'), 300); }
       else { analysisProgressCurrent.value = 100; setTimeout(() => stopProgress('current'), 300); }
-      updateStatus('分析完成');
-      showToast('分析完成');
+      if (isPrevReportInvalid.value) {
+        showToast('停育前报告异常，请检查', 'error');
+      } else {
+        showToast('分析完成', 'success');
+      }
     } else {
       console.error('获取分析结果失败--------------:', res);
       throw new Error('获取分析结果失败，状态码: ' + res.statusCode);
@@ -785,6 +802,9 @@ function formatYMD(date) {
     return `${y}-${m}-${d2}`;
   } catch { return '-'; }
 }
+function formatMiscarryAnalysis(date){
+  return formatYMD(date) !== '-' ? formatYMD(date) : "停育前报告异常";
+}
 function calculatelastMenstrualPeriod(examDateStr, gestationalWeeks) {
   if (!examDateStr || !gestationalWeeks || gestationalWeeks === '-') return null;
   const examDate = parseYMD(examDateStr);
@@ -813,7 +833,7 @@ function showNaturalMiscarryModal() {
       return;
     }
     if (!prevAnalysisResult.value['日期']) {
-      showToast('「超声检查日期（停育前）」未识别到，请手动输入');
+      showToast('「超声检查日期（停育前）」未识别到，请手动输入', 'error');
       return;
     }
 
@@ -950,20 +970,6 @@ async function computeImageHashHex(filePath, fileObj) {
   flex-direction: column;
   justify-content: center;
   gap: 20rpx;
-}
-
-/* 测试按钮组 */
-.test-buttons {
-  display: flex;
-  gap: 20rpx;
-}
-
-/* 操作按钮组 */
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-  margin-top: 20rpx;
 }
 
 /* 上传按钮 - 更有活力的渐变色 */
@@ -1381,18 +1387,6 @@ async function computeImageHashHex(filePath, fileObj) {
   letter-spacing: 2rpx;
   position: relative;
   padding-left: 30rpx;
-}
-.loading-btn .progress-text::before { /* 左侧装饰光点 */
-  content: "";
-  position: absolute;
-  left: 6rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 18rpx; height: 18rpx;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%,#fff,rgba(255,255,255,0.15) 60%,transparent 70%);
-  box-shadow: 0 0 10rpx #fff,0 0 26rpx #fff,0 0 38rpx #24c4ab;
-  animation: dotBlink 1.2s ease-in-out infinite;
 }
 @keyframes textPulse { 0%,100% { opacity: .95; filter: drop-shadow(0 0 6rpx rgba(255,255,255,.45)); } 50% { opacity:.6; filter: drop-shadow(0 0 10rpx rgba(36,196,171,.6)); } }
 @keyframes dotBlink { 0%,100% { transform: translateY(-50%) scale(.9);} 50% { transform: translateY(-50%) scale(1.15);} }
