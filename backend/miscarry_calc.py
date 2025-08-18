@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify, abort, send_from_directory
 from flask_cors import CORS
 import logging
-from decrypt import decrypt_db_data
+
+from common.decrypt import decrypt_db_data
 from mysql_op import DatabaseManager
 from contextlib import contextmanager
 from werkzeug.exceptions import HTTPException
@@ -10,6 +11,10 @@ import json
 import base64
 from openai import OpenAI
 import logging
+from pypushdeer import PushDeer
+
+pushdeer = PushDeer()
+
 
 # 获取一个日志记录器实例
 logger = logging.getLogger(__name__)
@@ -19,8 +24,9 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-
-client = OpenAI(api_key=os.environ["METACHAT_API_KEY"], base_url="https://llm-api.mmchat.xyz/v1")
+client = OpenAI(
+    api_key=os.environ["ENV_METACHAT_API_KEY"], base_url="https://llm-api.mmchat.xyz/v1"
+)
 
 UPLOAD_DIR = "/var/hundao/apps/1_miscarry_calc/images"  # 用于上传超声图
 
@@ -39,18 +45,19 @@ CORS(
 )
 # logging.basicConfig(level=logging.INFO)
 
-
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 限制上传文件的大小 1MB
 
-db_info = None  # 先定义为 None
-db_info = decrypt_db_data()  # 只在主入口调用
+# Decrypt database information
+db_info = decrypt_db_data("1_miscarry_calc")
 
 
 # Context manager for database connections
 @contextmanager
 def get_db_connection():
     global db_info
-    db = DatabaseManager(host=db_info[2], user=db_info[0], password=db_info[1], db=db_info[3])
+    db = DatabaseManager(
+        host=db_info[2], user=db_info[0], password=db_info[1], db=db_info[3]
+    )
     try:
         db.connect()
         yield db
@@ -92,7 +99,9 @@ def upload_images(filename):
         if not os.path.exists(file_path):
             # 文件不存在 - 设置不缓存
             response = jsonify({"error": "File not found"}), 404
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Cache-Control"] = (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            )
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
             return response
@@ -124,10 +133,41 @@ def upload_images(filename):
         file = request.files["file"]
         try:
             file.save(file_path)
+            pushdeer.send_markdown(
+                "MiscarryCalc",
+                desp="# 有文件上传\n**optional** description in markdown",
+            )
             return jsonify({"success": True}), 200
         except Exception as e:
             app.logger.error(f"Failed to save file {filename}: {e}")
             return jsonify({"error": "File save failed"}), 500
+
+
+@app.route("/analysis/<filename>", methods=["GET"])
+def analyze_image(filename):
+    if not filename:
+        abort(400, description="Invalid filename provided")
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    hash = filename.split(".")[0]  # 文件名格式为 hash.ext
+
+    # 检查文件是否存在（更快、更省资源）
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found"}), 404
+
+    # 再查询数据库，有分析数据时直接返回json字段
+    try:
+        with get_db_connection() as db:
+            res = db.get_data_by_hash(hash)
+            if res:
+                return res["json"], 200
+            else:  # 数据库中没有分析数据，调用GPT
+                return process_image_analysis(file_path, filename)
+    except HTTPException:
+        # 如果是 HTTPException（如由 abort() 引发），让 Flask 自行处理
+        raise
+    except Exception as e:
+        app.logger.error(f"Failed to retrieve data with filename {filename}: {e}")
+        abort(500)
 
 
 # 调用GPT进行图像分析
@@ -148,16 +188,8 @@ def upload_images(filename):
 #
 # API 元点计算公式
 # API 元点消耗 = 输入 Tokens / 输入 API 元点消耗比例 + 输出 Tokens / 输出 API 元点消耗比例
-@app.route("/analysis/<filename>", methods=["GET"])
-def analyze_image(filename):
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    # 检查文件是否存在
-    if not os.path.exists(file_path):
-        return jsonify({"error": "File not found"}), 404
-
-    # 获取 Base64 编码
-    base64_image = encode_image(file_path)
+def process_image_analysis(file_path, filename):
+    base64_image = encode_image(file_path)  # 获取 Base64 编码
 
     prompt = """
 分析超声结果，整理关键信息，仔细查找日期，仅输出标准 JSON 格式，且不包含多余的换行、空格或 BOM，格式如下：
@@ -185,9 +217,95 @@ def analyze_image(filename):
             }
         ],
     )
-    # 直接返回 JSON
+    # 将返回的 JSON 存入数据库
     try:
         result_json = json.loads(response.output_text)
+        # 组装写入 miscarry_calc_data_table 的数据
+        # 表结构字段: hash, json, ext, mime, size, width, height, stored_path
+        if "." in filename:
+            hash, ext = filename.rsplit(".", 1)
+            ext = ext.lower()
+        else:
+            hash, ext = filename, ""
+
+        if ext in ("jpg", "jpeg"):
+            mime = "image/jpeg"
+        elif ext == "png":
+            mime = "image/png"
+        elif ext == "gif":
+            mime = "image/gif"
+        elif ext == "webp":
+            mime = "image/webp"
+        else:
+            mime = "application/octet-stream"
+
+        size = None
+        try:
+            size = os.path.getsize(file_path)
+        except OSError:
+            size = 0
+
+        width = height = None
+        # 尝试获取图像尺寸（可选，不存在 Pillow 时忽略）
+        try:
+            import importlib
+
+            ImageModule = importlib.import_module("PIL.Image")  # 可选依赖 Pillow
+            with ImageModule.open(file_path) as img:
+                width, height = img.size
+        except Exception:
+            # 未安装 Pillow 或读取失败时忽略尺寸
+            pass
+
+        # 解析结构化字段（健壮性处理：缺失或格式异常时给 None）
+        def _to_int(v):
+            try:
+                if v in (None, "", []):
+                    return None
+                return int(round(float(v)))
+            except Exception:
+                return None
+
+        gs_mm = _to_int(result_json.get("孕囊大小"))
+        crl_mm = _to_int(result_json.get("胚芽长"))
+        # 布尔字段兼容多种表现
+        miscarry_raw = result_json.get("是否停育")
+        if isinstance(miscarry_raw, bool):
+            miscarry = 1 if miscarry_raw else 0
+        elif isinstance(miscarry_raw, (int, float)):
+            miscarry = 1 if miscarry_raw else 0
+        elif isinstance(miscarry_raw, str):
+            miscarry = (
+                1
+                if miscarry_raw.strip().lower() in ("true", "1", "是", "停育", "yes")
+                else 0
+            )
+        else:
+            miscarry = None
+
+        exam_date = result_json.get("日期") or None
+        if isinstance(exam_date, str):
+            exam_date = exam_date.strip() or None
+        else:
+            exam_date = None
+
+        data = {
+            "hash": hash,
+            "json": json.dumps(result_json, ensure_ascii=False),
+            "gs_mm": gs_mm,
+            "crl_mm": crl_mm,
+            "miscarry": miscarry,
+            "exam_date": exam_date,
+            "ext": ext,
+            "mime": mime,
+            "size": size if size is not None else 0,
+            "width": width,
+            "height": height,
+            "stored_path": file_path,
+        }
+        with get_db_connection() as db:
+            db.insert_or_update_data(db.miscarry_calc_data_table, data)
+            db.commit()
         return jsonify(result_json)
     except Exception as e:
         app.logger.error(f"JSON 解析失败: {e}, 原始输出: {response.output_text}")
@@ -203,47 +321,11 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-@app.route("/analysis/test", methods=["GET"])
-def analyze_test():
-    result_json = {"孕囊大小": 52, "胚芽长": 11, "是否停育": False, "日期": "2025-03-27"}
-    return jsonify(result_json)
-
-
-@app.route("/analysis/test2", methods=["GET"])
-def analyze_test2():
-    result_json = {"孕囊大小": 24, "胚芽长": 9, "是否停育": True, "日期": "2025-01-10"}
-    return jsonify(result_json)
-
-
-@app.route("/analysis/test3", methods=["GET"])
-def analyze_test3():
-    result_json = {"孕囊大小": 25, "胚芽长": 4, "是否停育": False, "日期": ""}
-    return jsonify(result_json)
-
-
-@app.route("/analysis/test4", methods=["GET"])
-def analyze_test4():
-    result_json = {"孕囊大小": 25, "胚芽长": 4, "是否停育": False, "日期": "2025-01-01"}
-    return jsonify(result_json)
-
-
-@app.route("/analysis/test5", methods=["GET"])
-def analyze_test5():
-    result_json = {"孕囊大小": 24, "胚芽长": 9, "是否停育": True, "日期": ""}
-    return jsonify(result_json)
-
-
-@app.route("/analysis/test6", methods=["GET"])
-def analyze_test6():
-    result_json = {"孕囊大小": 12, "胚芽长": 0, "是否停育": False, "日期": ""}
-    return jsonify(result_json)
-
-
 if __name__ == "__main__":
     # # cd /root/Code/venv_313
     # # source bin/activate
-    # # cd /root/Code/Hun_RESTful
-    # # python 1_miscarry_calc.py
+    # # cd /root/Code/hundao_app
+    # # python miscarry_calc.py
     # # decrypt.py 关30行开31行
 
     # # 打印所有注册的路由

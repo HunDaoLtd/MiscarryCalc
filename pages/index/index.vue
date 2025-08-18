@@ -14,33 +14,21 @@
           </button>
         </uni-file-picker>
         <!-- 加载中显示进度条 -->
-        <button class="upload-btn" :disabled="true" v-else>
+        <button class="upload-btn loading-btn" :disabled="true" v-else>
           <view class="button-content progress-mode">
+            <view class="tech-overlay"></view>
             <view class="progress-wrapper">
               <text class="progress-text">分析中 {{ analysisProgressCurrent }}%</text>
               <view class="progress-bar">
                 <view class="progress-bar-inner" :style="{ width: analysisProgressCurrent + '%' }"></view>
               </view>
+              <view class="nano-spinner" />
             </view>
           </view>
         </button>
-        <!-- 测试按钮 -->
-        <!-- <view class="test-buttons">
-					<button @click="executeTest('normal')" class="upload-btn test-btn">
-						<view class="button-content">
-							<text class="upload-icon">🧪</text>
-							<text>非停测试</text>
-						</view>
-					</button>
-					<button @click="executeTest('miscarry')" class="upload-btn test-btn">
-						<view class="button-content">
-							<text class="upload-icon">🧪</text>
-							<text>停育测试</text>
-						</view>
-					</button>
-				</view> -->
       </view>
-      <!-- 并列显示两个分析报告 -->
+
+      <!-- ========== 并列显示两个分析报告 ========== -->
       <view v-if="analysisResult && analysisResult['是否停育'] && prevAnalysisResult" class="comparison-section">
         <!-- 报告标题行 -->
         <view class="comparison-header">
@@ -98,7 +86,7 @@
           <text class="section-subtitle">孕周估算</text>
           <!-- 孕囊估算：当任一报告没有胚芽长时显示 -->
           <view v-if="!analysisResult['胚芽长'] || !prevAnalysisResult['胚芽长']" class="comparison-row clickable-row"
-            @click="toggleRobinsonFormat">
+            @click="toggleGAsFormat">
             <text class="row-label">孕囊估算</text>
             <text class="row-value">{{ !prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ?
               formatWeeksAndDays(prevAnalysisResult.GA0) : (prevAnalysisResult.GA0 + ' 周')) : '-' }}</text>
@@ -107,28 +95,28 @@
           </view>
           <!-- Robinson公式等：当任一报告有胚芽长时显示 -->
           <view v-if="analysisResult['胚芽长'] || prevAnalysisResult['胚芽长']">
-            <view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
+            <view class="comparison-row clickable-row" @click="toggleGAsFormat">
               <text class="row-label">Robinson公式 (推荐)</text>
               <text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(prevAnalysisResult.GA1) : (prevAnalysisResult.GA1 + ' 周')) : '-' }}</text>
               <text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(analysisResult.GA1) : (analysisResult.GA1 + ' 周')) : '-' }}</text>
             </view>
-            <view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
+            <view class="comparison-row clickable-row" @click="toggleGAsFormat">
               <text class="row-label">Hadlock公式</text>
               <text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(prevAnalysisResult.GA4) : (prevAnalysisResult.GA4 + ' 周')) : '-' }}</text>
               <text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(analysisResult.GA4) : (analysisResult.GA4 + ' 周')) : '-' }}</text>
             </view>
-            <view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
+            <view class="comparison-row clickable-row" @click="toggleGAsFormat">
               <text class="row-label">回归方程</text>
               <text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(prevAnalysisResult.GA2) : (prevAnalysisResult.GA2 + ' 周')) : '-' }}</text>
               <text class="row-value">{{ analysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(analysisResult.GA2) : (analysisResult.GA2 + ' 周')) : '-' }}</text>
             </view>
-            <view class="comparison-row clickable-row" @click="toggleRobinsonFormat">
+            <view class="comparison-row clickable-row" @click="toggleGAsFormat">
               <text class="row-label">经验法则</text>
               <text class="row-value">{{ prevAnalysisResult['胚芽长'] ? (showWeeksAndDays ?
                 formatWeeksAndDays(prevAnalysisResult.GA3) : (prevAnalysisResult.GA3 + ' 周')) : '-' }}</text>
@@ -158,7 +146,7 @@
         </view>
       </view>
 
-      <!-- 原有分析报告显示（未停育或未上传前报告时） -->
+      <!-- ========== 单独显示一个分析报告 ========== -->
       <view v-else-if="analysisResult" class="result-section">
         <view v-if="imageUrl && !prevImageUrl" class="preview-section">
           <text class="section-title">图片预览</text>
@@ -194,28 +182,28 @@
         <view class="single-report-data">
           <text class="section-subtitle">孕周估算</text>
           <view class="result-list">
-            <view v-if="!analysisResult['胚芽长']" class="result-item clickable-row" @click="toggleRobinsonFormat">
+            <view v-if="!analysisResult['胚芽长']" class="result-item clickable-row" @click="toggleGAsFormat">
               <text class="row-label">孕囊估算</text>
               <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA0) : (analysisResult.GA0
                 + ' 周') }}</text>
             </view>
             <view v-else>
-              <view class="result-item clickable-row" @click="toggleRobinsonFormat">
+              <view class="result-item clickable-row" @click="toggleGAsFormat">
                 <text class="row-label">Robinson公式 (推荐)</text>
                 <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA1) :
                   (analysisResult.GA1 + ' 周') }}</text>
               </view>
-              <view class="result-item clickable-row" @click="toggleRobinsonFormat">
+              <view class="result-item clickable-row" @click="toggleGAsFormat">
                 <text class="row-label">Hadlock公式</text>
                 <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA4) :
                   (analysisResult.GA4 + ' 周') }}</text>
               </view>
-              <view class="result-item clickable-row" @click="toggleRobinsonFormat">
+              <view class="result-item clickable-row" @click="toggleGAsFormat">
                 <text class="row-label">回归方程</text>
                 <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA2) :
                   (analysisResult.GA2 + ' 周') }}</text>
               </view>
-              <view class="result-item clickable-row" @click="toggleRobinsonFormat">
+              <view class="result-item clickable-row" @click="toggleGAsFormat">
                 <text class="row-label">经验法则</text>
                 <text class="row-value">{{ showWeeksAndDays ? formatWeeksAndDays(analysisResult.GA3) :
                   (analysisResult.GA3 + ' 周') }}</text>
@@ -253,23 +241,18 @@
                   </view>
                 </button>
               </uni-file-picker>
-              <button class="upload-btn prev-btn" :disabled="true" v-else>
+              <button class="upload-btn prev-btn loading-btn" :disabled="true" v-else>
                 <view class="button-content progress-mode">
+                  <view class="tech-overlay"></view>
                   <view class="progress-wrapper">
                     <text class="progress-text">分析中 {{ analysisProgressPrev }}%</text>
                     <view class="progress-bar">
                       <view class="progress-bar-inner" :style="{ width: analysisProgressPrev + '%' }"></view>
                     </view>
+                    <view class="nano-spinner" />
                   </view>
                 </view>
               </button>
-              <!-- 测试按钮 -->
-              <!-- <button @click="executeTest('previous')" class="upload-btn test-btn">
-								<view class="button-content">
-									<text class="upload-icon">+</text>
-									<text>胎停育前测试</text>
-								</view>
-							</button> -->
             </view>
           </view>
         </view>
@@ -314,13 +297,14 @@ const endDate = new Date().toISOString().split('T')[0];
 
 // 响应式数据
 const imageUrl = ref('');
-const analysisResult = ref('');
+// 初始化为 null 而不是字符串，避免后续按对象属性访问时报错
+const analysisResult = ref(null);
 const uploadStatus = ref('');
 const isLoading = ref(false);
 
 // 用于存储胎停育前的图片和分析结果
 const prevImageUrl = ref('');
-const prevAnalysisResult = ref('');
+const prevAnalysisResult = ref(null);
 
 // 分别控制两个上传按钮的加载状态
 const isPrevLoading = ref(false);
@@ -359,11 +343,11 @@ function validateDateOrder(showHint = true) {
   }
 }
 
-// 新增：统一获取不同报告（current/previous）的引用与前缀
+// 统一获取不同报告（current/previous）的引用
 function getReportRefs(kind = 'current') {
   return kind === 'previous'
-    ? { imageRef: prevImageUrl, resultRef: prevAnalysisResult, prefix: 'prev_' }
-    : { imageRef: imageUrl, resultRef: analysisResult, prefix: 'score_' };
+    ? { imageRef: prevImageUrl, resultRef: prevAnalysisResult }
+    : { imageRef: imageUrl, resultRef: analysisResult };
 }
 
 // 计算属性：停育分析相关数据（使用 Date 对象进行内部运算）
@@ -409,7 +393,7 @@ function showToast(title, icon = 'none') {
   uni.showToast({ title, icon });
   // console.log('Toast:', title, icon);
 }
-// 新增：跨平台打开外部链接
+// 跨平台打开外部链接
 function openExternal(url) {
   // #ifdef H5
   window.open(url, '_blank');
@@ -438,10 +422,10 @@ function updateStatus(message) {
 }
 
 // 工具函数：统一的错误处理
-function handleError(error, defaultMessage, statusMessage, show=true) {
+function handleError(error, defaultMessage, statusMessage, showHint=true) {
   console.error(defaultMessage, error);
   updateStatus(statusMessage || (defaultMessage + ': ' + error.message));
-  if (show) {
+  if (showHint) {
     showToast(statusMessage || defaultMessage);
   }
 }
@@ -449,13 +433,29 @@ function handleError(error, defaultMessage, statusMessage, show=true) {
 // 工具函数：获取文件扩展名和内容类型
 function getFileTypeInfo(filePath) {
   const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+  // 新增：屏蔽 bmp / avif
+  if (['.bmp', '.avif'].includes(ext)) {
+    uni.showModal({
+      title: '分析失败',
+      content: `暂不支持该图片格式，请选择 JPG / JPEG / PNG / GIF / WEBP 格式`,
+      showCancel: false,
+      confirmText: '真头疼'
+    });
+    throw new Error('Unsupported image format: ' + ext);
+  }
   let contentType = 'application/octet-stream';
-  const typeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.bmp': 'image/bmp', '.webp': 'image/webp', '.avif': 'image/avif' };
+  const typeMap = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp'
+  };
   contentType = typeMap[ext] || contentType;
   return { ext, contentType };
 }
 
-// ====== 新增：图片压缩相关工具 ======
+// =========================== 图片压缩相关工具 ===========================
 const MAX_UPLOAD_SIZE = 1024 * 1024; // 1M
 const QUALITY_STEPS = [80, 70, 60, 50, 40, 30];
 
@@ -517,6 +517,7 @@ async function compressH5File(file, maxWidth = 1600) {
   }
   return outFile;
 }
+// =======================================================================
 
 // 文件选择回调（当前报告）
 function onFileSelectCurrent(e) {
@@ -533,7 +534,7 @@ async function handleFileSelect(e, kind) {
     if (!files.length) { showToast('未选择文件'); return; }
     let f = files[0];
     const { imageRef, resultRef } = getReportRefs(kind);
-    let originalPath = f.path || f.url || '';
+    let originalPath = f.path || f.url || ''; // 有优先级
     let uploadPath = originalPath;
     let uploadFileObj = f.file || null; // H5 File 对象（若存在）
     const originalSize = f.size; // 可能为 undefined (某些平台)
@@ -541,9 +542,10 @@ async function handleFileSelect(e, kind) {
     const rawName = f.name || f.url || originalPath || 'image.jpg';
     const { ext, contentType } = getFileTypeInfo(rawName);
 
+    // 界面更新
     if (kind === 'previous') { isPrevLoading.value = true; startProgress('previous'); } else { isLoading.value = true; startProgress('current'); }
-
-    imageRef.value = uploadPath; // 先展示原图
+  imageRef.value = uploadPath; // 展示原图
+  resultRef.value = null; // 清空显示，保持与初始化类型一致
 
     // 超过限制尝试压缩
     if (originalSize && originalSize > MAX_UPLOAD_SIZE) {
@@ -577,33 +579,22 @@ async function handleFileSelect(e, kind) {
     }
     const fileName = `${hashHex}${ext}`;
 
-    // 查重
+    // 查重与上传
     let existedRecord = null;
-    try { existedRecord = await checkExists(fileName); } catch (checkErr) { console.warn('查重失败, 忽略继续上传', checkErr); }
+    try { existedRecord = await checkExists(fileName); } catch (checkErr) { console.warn('查重失败, 继续上传', checkErr); }
     if (existedRecord) {
       updateStatus('已存在，跳过上传');
       showToast('已存在，跳过上传');
-      if (existedRecord.analysis) {
-        console.log('使用已有分析结果:', existedRecord.analysis);
-        calculateAnalysisResults(existedRecord.analysis, resultRef);
-        validateDateOrder(true);
-        if (kind === 'previous') { analysisProgressPrev.value = 99; setTimeout(() => stopProgress('previous'), 300); }
-        else { analysisProgressCurrent.value = 99; setTimeout(() => stopProgress('current'), 300); }
-      } else {
-        await processAnalysis(fileName, kind);
-      }
-      return;
+    }else {
+      updateStatus('新文件，准备上传');
+      await uploadFileUnified(uploadPath, contentType, fileName, kind, uploadFileObj, hashHex);
     }
 
-    // 重置结果占位
-    resultRef.value = '';
-
-    // 上传
-    await uploadFileUnified(uploadPath, contentType, fileName, kind, uploadFileObj, hashHex);
-    // 上传成功后再分析
+    // 分析和处理
     await processAnalysis(fileName, kind);
+
   } catch (err) {
-    handleError(err, '选择文件失败', '选择文件失败', show=false);
+    handleError(err, '选择文件失败', '选择文件失败', false);
   } finally {
     if (kind === 'previous') { isPrevLoading.value = false; }
     else { isLoading.value = false; }
@@ -612,7 +603,7 @@ async function handleFileSelect(e, kind) {
   }
 }
 
-// ------ 服务器是否已有相同图像(统一 fileName) ------
+// 服务器是否已有相同图像
 async function checkExists(fileName) {
   try {
     const res = await uni.request({
@@ -669,47 +660,37 @@ async function uploadFileUnified(filePath, contentType, fileName, kind = 'curren
   }
 }
 
-// 仅负责获取分析原始数据（不含进度条收尾）
-async function fetchAnalysisResult(fileName) {
-  const analysisUrl = `${API_BASE}/analysis/${fileName}`;
-  const res = await uni.request({ url: analysisUrl, method: 'GET', timeout: 60000 });
-  if (res.statusCode === 200 && res.data) return res.data;
-  return { error: true, status: res.statusCode };
-}
-
 // 统一的分析处理：更新进度 / 结果计算 / 校验
 async function processAnalysis(fileName, kind = 'current') {
   try {
     updateStatus('分析中...');
     showToast('分析中...');
-    const raw = await fetchAnalysisResult(fileName);
-    if (raw && !raw.error) {
+
+    const analysisUrl = `${API_BASE}/analysis/${fileName}`;
+    const res = await uni.request({ url: analysisUrl, method: 'GET', timeout: 60000 });
+    if (res.statusCode === 200 && res.data) {
       const { resultRef } = getReportRefs(kind);
-      calculateAnalysisResults(raw, resultRef);
+      calculateAnalysisResults(res.data, resultRef);
       validateDateOrder(true);
-      if (kind === 'previous') { analysisProgressPrev.value = 99; setTimeout(() => stopProgress('previous'), 300); }
-      else { analysisProgressCurrent.value = 99; setTimeout(() => stopProgress('current'), 300); }
+      if (kind === 'previous') { analysisProgressPrev.value = 100; setTimeout(() => stopProgress('previous'), 300); }
+      else { analysisProgressCurrent.value = 100; setTimeout(() => stopProgress('current'), 300); }
       updateStatus('分析完成');
       showToast('分析完成');
-      return true;
     } else {
-      const status = raw.status;
-      uni.showModal({
-        title: '分析失败',
-        content: `状态码: ${status}，请稍后重试。（最近GPT5不稳定，多尝试几次）`,
-        showCancel: false,
-        confirmText: '知道了'
-      });
-      return false;
+      console.error('获取分析结果失败--------------:', res);
+      throw new Error('获取分析结果失败，状态码: ' + res.statusCode);
     }
-  } catch (err) {
-    handleError(err, '获取分析结果失败', '分析失败: ' + err.message);
-    throw err;
+  } catch (err) { // fail 场景（无 statusCode）
+    uni.showModal({
+      title: '分析超时',
+      content: '后台分析中，请稍后重试。\n（最近GPT5不稳定，多尝试几次）',
+      // cancelText: '知道了',   // 左边按钮
+      confirmText: '知道了',    // 右边按钮
+      showCancel: false,      // 显示一个按钮
+    });
+    // throw err; // 不抛出错误，避免提示选择文件失败
   }
 }
-
-// (旧) getAnalysisResultUnified 已被拆分为 fetchAnalysisResult + processAnalysis
-// async function getAnalysisResultUnified(...) { /* replaced */ }
 
 // 分析结果计算
 async function calculateAnalysisResults(result, refs) {
@@ -762,8 +743,8 @@ function formatWeeksAndDays(weekValue) {
   return `${weeks}周+${days}天`;
 }
 
-// 切换Robinson公式显示格式
-function toggleRobinsonFormat() {
+// 切换孕周显示格式
+function toggleGAsFormat() {
   showWeeksAndDays.value = !showWeeksAndDays.value;
 }
 
@@ -783,7 +764,7 @@ function onDateChange(e, kind) {
   validateDateOrder(true);
 }
 
-// ============= 新实现：使用 Date 计算，显示时再格式化（YYYY-MM-DD） =============
+// ============= 使用 Date 计算，显示时再格式化（YYYY-MM-DD） =============
 function parseYMD(str) {
   if (!str) return null;
   const d = new Date(str);
@@ -860,54 +841,6 @@ function closeNaturalPopup() {
   try { naturalPopup.value && naturalPopup.value.close(); } catch (e) { /* noop */ }
 }
 
-// 原 addDaysYMD 已弃用，不再使用。
-
-async function executeTest(testType) {
-  const testConfig = {
-    'normal': {
-      imageUrl: `${API_BASE}/images/B08.jpg`,
-      apiUrl: `${API_BASE}/analysis/test`,
-      resultRef: analysisResult,
-      imageRef: imageUrl
-    },
-    'miscarry': {
-      imageUrl: `${API_BASE}/images/B02.jpg`,
-      apiUrl: `${API_BASE}/analysis/test2`,
-      resultRef: analysisResult,
-      imageRef: imageUrl
-    },
-    'previous': {
-      imageUrl: `${API_BASE}/images/B01.jpg`,
-      apiUrl: `${API_BASE}/analysis/test4`,
-      resultRef: prevAnalysisResult,
-      imageRef: prevImageUrl
-    }
-  };
-
-  const config = testConfig[testType];
-  if (!config) {
-    showToast('无效的测试类型');
-    return;
-  }
-
-  try {
-    updateStatus('测试中...');
-    config.imageRef.value = config.imageUrl;
-    const res = await uni.request({ url: config.apiUrl, method: 'GET', timeout: 30000 });
-    if (res.statusCode === 200) {
-      calculateAnalysisResults(res.data, config.resultRef);
-      validateDateOrder(true);
-      updateStatus('测试完成');
-    } else {
-      updateStatus('测试失败');
-      showToast('测试失败');
-    }
-  } catch (err) {
-    updateStatus('测试异常');
-    showToast('测试异常');
-  }
-}
-
 // 进度条相关
 const analysisProgressCurrent = ref(0);
 const analysisProgressPrev = ref(0);
@@ -961,7 +894,7 @@ async function computeImageHashHex(filePath, fileObj) {
         fs.readFile({ filePath, success: res => resolve(res.data), fail: err => reject(err) });
       });
     }
-    if (crypto && crypto.subtle) {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
       const digest = await crypto.subtle.digest('SHA-256', arrayBuffer);
       return arrayBufferToHex(digest);
     } else {
@@ -1371,6 +1304,136 @@ async function computeImageHashHex(filePath, fileObj) {
   transition: width 0.8s ease;
   border-radius: 8rpx;
 }
+
+/* ================= 科技感加载特效 ================= */
+/* 1. loading 按钮整体增加粒子+扫描线叠加层 */
+.loading-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(110deg,#1b7d6e,#1d9d88 40%,#24c4ab 70%,#1d9d88);
+  background-size: 200% 200%;
+  animation: btnGradientFlow 4s linear infinite;
+  box-shadow: 0 0 0 1rpx rgba(255,255,255,0.18), 0 0 18rpx rgba(36,196,171,0.55), 0 0 38rpx rgba(36,196,171,0.25);
+}
+
+@keyframes btnGradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 2. 半透明科技叠层（含扫描光 & 噪点闪烁） */
+.tech-overlay::before,
+.tech-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tech-overlay::before { /* 斜向扫描光 */
+  background: linear-gradient(120deg,transparent 0%,rgba(255,255,255,0.5) 45%,rgba(255,255,255,0.15) 50%,transparent 55%);
+  background-size: 200% 100%;
+  animation: scanMove 3.6s cubic-bezier(.65,.05,.36,1) infinite;
+  mix-blend-mode: overlay;
+}
+@keyframes scanMove {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
+.tech-overlay::after { /* 噪点闪烁 */
+  background-image: repeating-linear-gradient(90deg,rgba(255,255,255,0.07) 0 2rpx,transparent 2rpx 6rpx),
+    repeating-linear-gradient(0deg,rgba(255,255,255,0.06) 0 2rpx,transparent 2rpx 6rpx);
+  animation: noisePulse 1.8s steps(2,end) infinite;
+  opacity: .55;
+}
+@keyframes noisePulse { 50% { opacity:.25 } }
+
+/* 3. 进度条内部加斜纹流动、霓虹发光 */
+.loading-btn .progress-bar {
+  position: relative;
+  background: rgba(255,255,255,0.18);
+  backdrop-filter: blur(2rpx);
+}
+.loading-btn .progress-bar-inner {
+  background: linear-gradient(90deg,#fff,#dcfff9,#fff);
+  box-shadow: 0 0 12rpx rgba(255,255,255,.9),0 0 28rpx rgba(37,198,171,.85),0 0 46rpx rgba(37,198,171,.35);
+  position: relative;
+  overflow: hidden;
+}
+.loading-btn .progress-bar-inner::after { /* 流动斜纹 */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(135deg,rgba(0,0,0,0.12) 0 18rpx,rgba(255,255,255,0.15) 18rpx 36rpx);
+  mix-blend-mode: overlay;
+  animation: stripeMove 1.4s linear infinite;
+  opacity: .55;
+}
+@keyframes stripeMove { 0% { transform: translateX(0); } 100% { transform: translateX(-72rpx); } }
+
+/* 4. 文字呼吸闪烁（含百分比） */
+.loading-btn .progress-text {
+  background: linear-gradient(90deg,#fff,#d8fff7,#fff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #ffffff;
+  animation: textPulse 2.4s ease-in-out infinite;
+  letter-spacing: 2rpx;
+  position: relative;
+  padding-left: 30rpx;
+}
+.loading-btn .progress-text::before { /* 左侧装饰光点 */
+  content: "";
+  position: absolute;
+  left: 6rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18rpx; height: 18rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%,#fff,rgba(255,255,255,0.15) 60%,transparent 70%);
+  box-shadow: 0 0 10rpx #fff,0 0 26rpx #fff,0 0 38rpx #24c4ab;
+  animation: dotBlink 1.2s ease-in-out infinite;
+}
+@keyframes textPulse { 0%,100% { opacity: .95; filter: drop-shadow(0 0 6rpx rgba(255,255,255,.45)); } 50% { opacity:.6; filter: drop-shadow(0 0 10rpx rgba(36,196,171,.6)); } }
+@keyframes dotBlink { 0%,100% { transform: translateY(-50%) scale(.9);} 50% { transform: translateY(-50%) scale(1.15);} }
+
+/* 5. 微型纳米环 Spinner */
+.nano-spinner {
+  width: 44rpx; height: 44rpx;
+  margin: 12rpx auto 0;
+  position: relative;
+  filter: drop-shadow(0 0 6rpx rgba(255,255,255,.7));
+}
+.nano-spinner::before,
+.nano-spinner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4rpx solid rgba(255,255,255,0.25);
+  border-top-color: #ffffff;
+  animation: spin 1.2s linear infinite;
+}
+.nano-spinner::after { /* 反向第二圈 */
+  inset: 8rpx;
+  border: 4rpx solid rgba(255,255,255,0.35);
+  border-bottom-color: #24c4ab;
+  animation-duration: 1.8s;
+  animation-direction: reverse;
+  filter: drop-shadow(0 0 10rpx #24c4ab);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 6. 降级处理：某些低端平台不支持 backdrop 或混合模式时仍可显示基本动画 */
+@media (prefers-reduced-motion: reduce) {
+  .loading-btn,
+  .tech-overlay::before,
+  .tech-overlay::after,
+  .loading-btn .progress-bar-inner::after,
+  .nano-spinner::before,
+  .nano-spinner::after { animation: none !important; }
+}
+/* ================= 结束 ================= */
 
 /* 停育前按钮进度可复用同样样式，如需区分可根据 .prev-btn .progress-bar-inner 自定义颜色 */
 .prev-btn .progress-bar-inner {
