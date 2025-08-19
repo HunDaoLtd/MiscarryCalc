@@ -72,7 +72,7 @@
     "h5" : {
         "title" : "孕周智算",
         "router" : {
-            "base" : "/1_MiscarryCalc/"
+            "base" : "/1_miscarry_calc/"
         }
     }
 }

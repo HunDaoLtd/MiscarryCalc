@@ -25,6 +25,10 @@
 - 组件：`uni-popup`、`uni-transition`、`uni-scss`
 - 后端：Python RESTful 服务（示例脚本见 `backend/Hun_RESTful/1_MiscarryCalc.py`）
 
+## 必装插件：
+uni-popup 弹出层：https://ext.dcloud.net.cn/plugin?name=uni-popup
+uni-file-picker 文件选择上传：https://ext.dcloud.net.cn/plugin?id=4079
+
 ## 目录结构
 ```
 .
