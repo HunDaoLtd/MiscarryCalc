@@ -41,12 +41,14 @@
             <text class="column-title">停育前报告</text>
             <view v-if="prevImageUrl" class="preview-section">
               <image :src="prevImageUrl" mode="aspectFit" class="preview-image"></image>
+              <button class="reanalyze-btn" @click.stop="reAnalyze('previous')">重新分析</button>
             </view>
           </view>
           <view class="image-column">
             <text class="column-title">当前报告</text>
             <view v-if="imageUrl" class="preview-section">
               <image :src="imageUrl" mode="aspectFit" class="preview-image"></image>
+              <button class="reanalyze-btn" @click.stop="reAnalyze('current')">重新分析</button>
             </view>
           </view>
         </view>
@@ -66,7 +68,8 @@
           </view>
           <view class="comparison-row">
             <text class="row-label">是否停育</text>
-            <text class="row-value" :class="{ 'date-invalid': prevAnalysisResult['是否停育'] }">{{ prevAnalysisResult['是否停育'] ? '是' : '否' }}</text>
+            <text class="row-value" :class="{ 'date-invalid': prevAnalysisResult['是否停育'] }">{{
+              prevAnalysisResult['是否停育'] ? '是' : '否' }}</text>
             <text class="row-value">{{ analysisResult['是否停育'] ? '是' : '否' }}</text>
           </view>
           <view class="comparison-row">
@@ -152,6 +155,7 @@
         <view v-if="imageUrl && !prevImageUrl" class="preview-section">
           <text class="section-title">图片预览</text>
           <image :src="imageUrl" mode="aspectFit" class="preview-image"></image>
+          <button class="reanalyze-btn" @click.stop="reAnalyze('current')">重新分析</button>
         </view>
 
         <text class="section-title">分析报告</text>
@@ -284,7 +288,7 @@
       <view class="footer-line" @click="openExternal('https://zhuanlan.zhihu.com/p/18132159339')">
         <text class="footer-link">3、自然流产科普知识点我。</text>
       </view>
-      <text class="footer-line meta">© 2025 魂道 MiscarryCalc · v1.1.0</text>
+      <text class="footer-line meta">© 2025 魂道 MiscarryCalc · v1.2.0</text>
     </view>
   </view>
 </template>
@@ -306,6 +310,32 @@ const isLoading = ref(false);
 // 用于存储胎停育前的图片和分析结果
 const prevImageUrl = ref('');
 const prevAnalysisResult = ref(null);
+// 记录文件名，便于重新分析
+const currentFileName = ref('');
+const prevFileName = ref('');
+
+// =================== 统一界面更新封装 ===================
+function beginAnalysisUI(kind, { newImage = null, resetResult = false } = {}) {
+  const { imageRef, resultRef } = getReportRefs(kind);
+  if (newImage) imageRef.value = newImage;
+  if (resetResult) resultRef.value = null;
+  if (kind === 'previous') {
+    isPrevLoading.value = true;
+    startProgress('previous');
+  } else {
+    isLoading.value = true;
+    startProgress('current');
+  }
+}
+function endAnalysisUI(kind) {
+  if (kind === 'previous') {
+    isPrevLoading.value = false;
+    if (progressTimerPrev) { stopProgress('previous'); }
+  } else {
+    isLoading.value = false;
+    if (progressTimerCurrent) { stopProgress('current'); }
+  }
+}
 
 // 分别控制两个上传按钮的加载状态
 const isPrevLoading = ref(false);
@@ -436,7 +466,7 @@ function updateStatus(message) {
 }
 
 // 工具函数：统一的错误处理
-function handleError(error, defaultMessage, statusMessage, showHint=true) {
+function handleError(error, defaultMessage, statusMessage, showHint = true) {
   console.error(defaultMessage, error);
   updateStatus(statusMessage || (defaultMessage + ': ' + error.message));
   if (showHint) {
@@ -556,10 +586,8 @@ async function handleFileSelect(e, kind) {
     const rawName = f.name || f.url || originalPath || 'image.jpg';
     const { ext, contentType } = getFileTypeInfo(rawName);
 
-    // 界面更新
-    if (kind === 'previous') { isPrevLoading.value = true; startProgress('previous'); } else { isLoading.value = true; startProgress('current'); }
-  imageRef.value = uploadPath; // 展示原图
-  resultRef.value = null; // 清空显示，保持与初始化类型一致
+  // 界面更新统一封装
+  beginAnalysisUI(kind, { newImage: uploadPath, resetResult: true });
 
     // 超过限制尝试压缩
     if (originalSize && originalSize > MAX_UPLOAD_SIZE) {
@@ -592,6 +620,7 @@ async function handleFileSelect(e, kind) {
       return;
     }
     const fileName = `${hashHex}${ext}`;
+    if (kind === 'previous') { prevFileName.value = fileName; } else { currentFileName.value = fileName; }
 
     // 查重与上传
     let existedRecord = null;
@@ -599,7 +628,7 @@ async function handleFileSelect(e, kind) {
     if (existedRecord) {
       updateStatus('已存在，跳过上传');
       showToast('已存在，跳过上传');
-    }else {
+    } else {
       updateStatus('新文件，准备上传');
       await uploadFileUnified(uploadPath, contentType, fileName, kind, uploadFileObj, hashHex);
     }
@@ -610,10 +639,7 @@ async function handleFileSelect(e, kind) {
   } catch (err) {
     handleError(err, '选择文件失败', '选择文件失败', false);
   } finally {
-    if (kind === 'previous') { isPrevLoading.value = false; }
-    else { isLoading.value = false; }
-    if (kind === 'previous' && progressTimerPrev) { stopProgress('previous'); }
-    if (kind !== 'previous' && progressTimerCurrent) { stopProgress('current'); }
+  endAnalysisUI(kind);
   }
 }
 
@@ -675,12 +701,11 @@ async function uploadFileUnified(filePath, contentType, fileName, kind = 'curren
 }
 
 // 分析处理
-async function processAnalysis(fileName, kind = 'current') {
+async function processAnalysis(fileName, kind = 'current', force = false) {
   try {
     updateStatus('分析中...');
     showToast('分析中...');
-
-    const analysisUrl = `${API_BASE}/analysis/${fileName}`;
+    const analysisUrl = `${API_BASE}/analysis/${fileName}${force ? '?force=1' : ''}`;
     const res = await uni.request({ url: analysisUrl, method: 'GET', timeout: 60000 });
     if (res.statusCode === 200 && res.data) {
       const { resultRef } = getReportRefs(kind);
@@ -707,6 +732,15 @@ async function processAnalysis(fileName, kind = 'current') {
     });
     // throw err; // 不抛出错误，避免提示选择文件失败
   }
+}
+
+// 重新分析（强制）
+function reAnalyze(kind) {
+  const fileName = kind === 'previous' ? prevFileName.value : currentFileName.value;
+  if (!fileName) { showToast('暂无可重新分析的图片'); return; }
+  // 不重置已有结果，保留旧数据直到新数据返回
+  beginAnalysisUI(kind, { resetResult: false });
+  processAnalysis(fileName, kind, true).finally(() => endAnalysisUI(kind));
 }
 
 // 分析结果计算
@@ -802,7 +836,7 @@ function formatYMD(date) {
     return `${y}-${m}-${d2}`;
   } catch { return '-'; }
 }
-function formatMiscarryAnalysis(date){
+function formatMiscarryAnalysis(date) {
   return formatYMD(date) !== '-' ? formatYMD(date) : "停育前报告异常";
 }
 function calculatelastMenstrualPeriod(examDateStr, gestationalWeeks) {
@@ -914,7 +948,7 @@ async function computeImageHashHex(filePath, fileObj) {
         fs.readFile({ filePath, success: res => resolve(res.data), fail: err => reject(err) });
       });
     }
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
       const digest = await crypto.subtle.digest('SHA-256', arrayBuffer);
       return arrayBufferToHex(digest);
     } else {
@@ -1025,6 +1059,7 @@ async function computeImageHashHex(filePath, fileObj) {
   display: flex;
   flex-direction: column;
   padding: 16rpx;
+  position: relative;
 }
 
 .preview-image {
@@ -1034,6 +1069,39 @@ async function computeImageHashHex(filePath, fileObj) {
   background-color: #f0f0f0;
   /* 图片加载前的背景色 */
   margin-top: 10rpx;
+}
+
+/* 重新分析按钮覆盖 */
+.reanalyze-btn {
+  position: absolute;
+  right: 26rpx;
+  bottom: 26rpx;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22rpx;
+  padding: 12rpx 22rpx;
+  border-radius: 36rpx;
+  backdrop-filter: blur(4rpx);
+  border: 1rpx solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  line-height: 1;
+  transition: background 0.25s, transform 0.25s;
+}
+
+.reanalyze-btn::before {
+  content: '\21BB';
+  font-size: 24rpx;
+}
+
+.reanalyze-btn:active {
+  transform: scale(0.94);
+}
+
+.reanalyze-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
 }
 
 /* 统一：卡片容器通用样式（原 result-section 与 comparison-data 公共部分） */
@@ -1154,12 +1222,13 @@ async function computeImageHashHex(filePath, fileObj) {
   flex: 1;
   font-size: 24rpx;
   color: #333;
-  text-align: center;
+  text-align: right;
   font-weight: 600;
   line-height: 1.3;
   word-break: break-word;
   white-space: normal;
   overflow: visible;
+  margin-right: 20rpx;
 }
 
 /* 对比模式下的分隔线 */
@@ -1316,16 +1385,24 @@ async function computeImageHashHex(filePath, fileObj) {
 .loading-btn {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(110deg,#1b7d6e,#1d9d88 40%,#24c4ab 70%,#1d9d88);
+  background: linear-gradient(110deg, #1b7d6e, #1d9d88 40%, #24c4ab 70%, #1d9d88);
   background-size: 200% 200%;
   animation: btnGradientFlow 4s linear infinite;
-  box-shadow: 0 0 0 1rpx rgba(255,255,255,0.18), 0 0 18rpx rgba(36,196,171,0.55), 0 0 38rpx rgba(36,196,171,0.25);
+  box-shadow: 0 0 0 1rpx rgba(255, 255, 255, 0.18), 0 0 18rpx rgba(36, 196, 171, 0.55), 0 0 38rpx rgba(36, 196, 171, 0.25);
 }
 
 @keyframes btnGradientFlow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 /* 2. 半透明科技叠层（含扫描光 & 噪点闪烁） */
@@ -1336,50 +1413,77 @@ async function computeImageHashHex(filePath, fileObj) {
   inset: 0;
   pointer-events: none;
 }
-.tech-overlay::before { /* 斜向扫描光 */
-  background: linear-gradient(120deg,transparent 0%,rgba(255,255,255,0.5) 45%,rgba(255,255,255,0.15) 50%,transparent 55%);
+
+.tech-overlay::before {
+  /* 斜向扫描光 */
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.5) 45%, rgba(255, 255, 255, 0.15) 50%, transparent 55%);
   background-size: 200% 100%;
-  animation: scanMove 3.6s cubic-bezier(.65,.05,.36,1) infinite;
+  animation: scanMove 3.6s cubic-bezier(.65, .05, .36, 1) infinite;
   mix-blend-mode: overlay;
 }
+
 @keyframes scanMove {
-  0% { background-position: -150% 0; }
-  100% { background-position: 150% 0; }
+  0% {
+    background-position: -150% 0;
+  }
+
+  100% {
+    background-position: 150% 0;
+  }
 }
-.tech-overlay::after { /* 噪点闪烁 */
-  background-image: repeating-linear-gradient(90deg,rgba(255,255,255,0.07) 0 2rpx,transparent 2rpx 6rpx),
-    repeating-linear-gradient(0deg,rgba(255,255,255,0.06) 0 2rpx,transparent 2rpx 6rpx);
-  animation: noisePulse 1.8s steps(2,end) infinite;
+
+.tech-overlay::after {
+  /* 噪点闪烁 */
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.07) 0 2rpx, transparent 2rpx 6rpx),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 2rpx, transparent 2rpx 6rpx);
+  animation: noisePulse 1.8s steps(2, end) infinite;
   opacity: .55;
 }
-@keyframes noisePulse { 50% { opacity:.25 } }
+
+@keyframes noisePulse {
+  50% {
+    opacity: .25
+  }
+}
 
 /* 3. 进度条内部加斜纹流动、霓虹发光 */
 .loading-btn .progress-bar {
   position: relative;
-  background: rgba(255,255,255,0.18);
+  background: rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(2rpx);
 }
+
 .loading-btn .progress-bar-inner {
-  background: linear-gradient(90deg,#fff,#dcfff9,#fff);
-  box-shadow: 0 0 12rpx rgba(255,255,255,.9),0 0 28rpx rgba(37,198,171,.85),0 0 46rpx rgba(37,198,171,.35);
+  background: linear-gradient(90deg, #fff, #dcfff9, #fff);
+  box-shadow: 0 0 12rpx rgba(255, 255, 255, .9), 0 0 28rpx rgba(37, 198, 171, .85), 0 0 46rpx rgba(37, 198, 171, .35);
   position: relative;
   overflow: hidden;
 }
-.loading-btn .progress-bar-inner::after { /* 流动斜纹 */
+
+.loading-btn .progress-bar-inner::after {
+  /* 流动斜纹 */
   content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(135deg,rgba(0,0,0,0.12) 0 18rpx,rgba(255,255,255,0.15) 18rpx 36rpx);
+  background: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.12) 0 18rpx, rgba(255, 255, 255, 0.15) 18rpx 36rpx);
   mix-blend-mode: overlay;
   animation: stripeMove 1.4s linear infinite;
   opacity: .55;
 }
-@keyframes stripeMove { 0% { transform: translateX(0); } 100% { transform: translateX(-72rpx); } }
+
+@keyframes stripeMove {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-72rpx);
+  }
+}
 
 /* 4. 文字呼吸闪烁（含百分比） */
 .loading-btn .progress-text {
-  background: linear-gradient(90deg,#fff,#d8fff7,#fff);
+  background: linear-gradient(90deg, #fff, #d8fff7, #fff);
   -webkit-background-clip: text;
   background-clip: text;
   color: #ffffff;
@@ -1388,45 +1492,82 @@ async function computeImageHashHex(filePath, fileObj) {
   position: relative;
   padding-left: 30rpx;
 }
-@keyframes textPulse { 0%,100% { opacity: .95; filter: drop-shadow(0 0 6rpx rgba(255,255,255,.45)); } 50% { opacity:.6; filter: drop-shadow(0 0 10rpx rgba(36,196,171,.6)); } }
-@keyframes dotBlink { 0%,100% { transform: translateY(-50%) scale(.9);} 50% { transform: translateY(-50%) scale(1.15);} }
+
+@keyframes textPulse {
+
+  0%,
+  100% {
+    opacity: .95;
+    filter: drop-shadow(0 0 6rpx rgba(255, 255, 255, .45));
+  }
+
+  50% {
+    opacity: .6;
+    filter: drop-shadow(0 0 10rpx rgba(36, 196, 171, .6));
+  }
+}
+
+@keyframes dotBlink {
+
+  0%,
+  100% {
+    transform: translateY(-50%) scale(.9);
+  }
+
+  50% {
+    transform: translateY(-50%) scale(1.15);
+  }
+}
 
 /* 5. 微型纳米环 Spinner */
 .nano-spinner {
-  width: 44rpx; height: 44rpx;
+  width: 44rpx;
+  height: 44rpx;
   margin: 12rpx auto 0;
   position: relative;
-  filter: drop-shadow(0 0 6rpx rgba(255,255,255,.7));
+  filter: drop-shadow(0 0 6rpx rgba(255, 255, 255, .7));
 }
+
 .nano-spinner::before,
 .nano-spinner::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 4rpx solid rgba(255,255,255,0.25);
+  border: 4rpx solid rgba(255, 255, 255, 0.25);
   border-top-color: #ffffff;
   animation: spin 1.2s linear infinite;
 }
-.nano-spinner::after { /* 反向第二圈 */
+
+.nano-spinner::after {
+  /* 反向第二圈 */
   inset: 8rpx;
-  border: 4rpx solid rgba(255,255,255,0.35);
+  border: 4rpx solid rgba(255, 255, 255, 0.35);
   border-bottom-color: #24c4ab;
   animation-duration: 1.8s;
   animation-direction: reverse;
   filter: drop-shadow(0 0 10rpx #24c4ab);
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* 6. 降级处理：某些低端平台不支持 backdrop 或混合模式时仍可显示基本动画 */
 @media (prefers-reduced-motion: reduce) {
+
   .loading-btn,
   .tech-overlay::before,
   .tech-overlay::after,
   .loading-btn .progress-bar-inner::after,
   .nano-spinner::before,
-  .nano-spinner::after { animation: none !important; }
+  .nano-spinner::after {
+    animation: none !important;
+  }
 }
+
 /* ================= 结束 ================= */
 
 /* 停育前按钮进度可复用同样样式，如需区分可根据 .prev-btn .progress-bar-inner 自定义颜色 */

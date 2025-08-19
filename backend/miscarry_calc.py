@@ -145,6 +145,12 @@ def upload_images(filename):
 
 @app.route("/analysis/<filename>", methods=["GET"])
 def analyze_image(filename):
+    # 方式1: 通过查询参数 ?force=1 或 ?force=true
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    # 方式2: 通过请求头 X-Force-Analyze: true
+    if request.headers.get("X-Force-Analyze", "").lower() in ("1", "true", "yes"):
+        force = True
+
     if not filename:
         abort(400, description="Invalid filename provided")
     file_path = os.path.join(UPLOAD_DIR, filename)
@@ -153,6 +159,10 @@ def analyze_image(filename):
     # 检查文件是否存在（更快、更省资源）
     if not os.path.exists(file_path):
         return jsonify({"error": "File not found"}), 404
+
+    # 强制重新分析（会覆盖数据库记录）
+    if force:
+        return process_image_analysis(file_path, filename)
 
     # 再查询数据库，有分析数据时直接返回json字段
     try:
