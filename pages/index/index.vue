@@ -1,7 +1,19 @@
-<!-- 有大量未审计的AI代码 -->
+<!-- 包含未审计的AI代码 -->
 <template>
   <view class="container">
-    <view class="content-card">
+  <view class="content-card" :class="{ 'has-corner': (totalVisits !== null || totalAnalyses !== null) }">
+        <!-- 角落统计信息（低调胶囊） -->
+        <view v-if="totalVisits !== null || totalAnalyses !== null" class="corner-stats">
+          <text class="cs-item">
+            <text class="cs-label">累计访问</text>
+            <text class="cs-value">{{ totalVisits ?? '-' }}</text>
+          </text>
+          <text class="cs-dot">·</text>
+          <text class="cs-item">
+            <text class="cs-label">累计分析</text>
+            <text class="cs-value">{{ totalAnalyses ?? '-' }}</text>
+          </text>
+        </view>
       <view class="upload-section">
         <!-- 上方按钮：当前报告文件选择 -->
         <uni-file-picker v-if="!isLoading" class="picker-btn-wrapper" limit="1" file-mediatype="image"
@@ -288,13 +300,13 @@
       <view class="footer-line" @click="openExternal('https://zhuanlan.zhihu.com/p/18132159339')">
         <text class="footer-link">3、自然流产科普知识点我。</text>
       </view>
-      <text class="footer-line meta">© 2025 魂道 MiscarryCalc · v1.2.0</text>
+      <text class="footer-line meta">© 2025 魂道 MiscarryCalc · V 1.3.0</text>
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 
 const API_BASE = 'https://apps.hundao.xyz/1_miscarry_calc';
 
@@ -313,6 +325,9 @@ const prevAnalysisResult = ref(null);
 // 记录文件名，便于重新分析
 const currentFileName = ref('');
 const prevFileName = ref('');
+
+const totalVisits = ref(null);
+const totalAnalyses = ref(null);
 
 // =================== 统一界面更新封装 ===================
 function beginAnalysisUI(kind, { newImage = null, resetResult = false } = {}) {
@@ -705,7 +720,7 @@ async function processAnalysis(fileName, kind = 'current', force = false) {
   try {
     updateStatus('分析中...');
     showToast('分析中...');
-    const analysisUrl = `${API_BASE}/analysis/${fileName}${force ? '?force=1' : ''}`;
+    const analysisUrl = `${API_BASE}/apiv1/analysis/${fileName}${force ? '?force=1' : ''}`;
     const res = await uni.request({ url: analysisUrl, method: 'GET', timeout: 60000 });
     if (res.statusCode === 200 && res.data) {
       const { resultRef } = getReportRefs(kind);
@@ -961,6 +976,30 @@ async function computeImageHashHex(filePath, fileObj) {
     return null;
   }
 }
+
+async function trackVisit() {
+  try {
+    await uni.request({ url: `${API_BASE}/apiv1/visit`, method: 'POST', timeout: 8000 });
+  } catch (e) { /* 忽略 */ }
+}
+
+async function fetchMetrics() {
+  try {
+    const res = await uni.request({ url: `${API_BASE}/apiv1/metrics`, method: 'GET', timeout: 8000 });
+    if (res.statusCode === 200 && res.data) {
+      totalVisits.value = Number(res.data.total || 0);
+      // 新增：累计分析次数（后端 analyses 字段）
+      if (typeof res.data.analyses !== 'undefined') {
+        totalAnalyses.value = Number(res.data.analyses || 0);
+      }
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+onMounted(async () => {
+  await trackVisit();
+  fetchMetrics();
+});
 </script>
 
 <style scoped>
@@ -986,7 +1025,33 @@ async function computeImageHashHex(filePath, fileObj) {
   flex-direction: column;
   gap: 30rpx;
   /* 模块间距 */
+  position: relative; /* 供角标定位 */
 }
+
+/* 有角标时，顶部预留空间，避免与首个按钮重叠 */
+.content-card.has-corner {
+  padding-top: 72rpx; /* 文本角标占位更轻量 */
+}
+
+/* 角落统计（低调精致） */
+.corner-stats {
+  position: absolute;
+  top: 14rpx;
+  right: 30rpx;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8rpx;
+  z-index: 1000;
+  pointer-events: none; /* 不阻挡下方元素点击 */
+  white-space: nowrap; /* 单行显示 */
+  font-size: 22rpx; /* 低调的小号文字 */
+  color: #667085; /* 默认文字色（偏中性） */
+  font-weight: 400;
+}
+.cs-item { display: inline-flex; align-items: baseline; gap: 4rpx; }
+.cs-label { color: #94a3b8; font-weight: 400; }
+.cs-value { color: #334155; font-weight: 600; }
+.cs-dot { color: #94a3b8; opacity: .7; margin: 0 2rpx; }
 
 /* 区域标题 */
 .section-title {
@@ -1020,11 +1085,6 @@ async function computeImageHashHex(filePath, fileObj) {
   border: none;
 }
 
-/* 测试按钮样式 */
-.test-btn {
-  background: linear-gradient(45deg, #ffd966, #f6b26b) !important;
-  box-shadow: 0 8rpx 20rpx rgba(255, 182, 107, 0.3) !important;
-}
 
 /* 停育前报告按钮样式 */
 .prev-btn {
@@ -1150,16 +1210,6 @@ async function computeImageHashHex(filePath, fileObj) {
   justify-content: space-between;
 }
 
-.risk-high {
-  color: #e74c3c;
-}
-
-.status-message {
-  color: #007AFF;
-  font-size: 14px;
-  text-align: center;
-  margin-bottom: 10px;
-}
 
 /* 对比分析样式 */
 .comparison-section {
@@ -1290,21 +1340,6 @@ async function computeImageHashHex(filePath, fileObj) {
   border-bottom: 2rpx solid #e53935;
 }
 
-/* 数据缺失提醒样式 */
-.data-missing {
-  color: #ff9800 !important;
-  font-weight: bold !important;
-  background: linear-gradient(45deg, #fff3e0, #ffe0b2) !important;
-  padding: 4rpx 8rpx !important;
-  border-radius: 8rpx !important;
-  border: 1rpx solid #ffe0b2 !important;
-  position: relative;
-}
-
-.data-missing::before {
-  content: '⚠️';
-  margin-right: 4rpx;
-}
 
 /* 自定义弹窗样式 */
 .custom-dialog {
@@ -1507,17 +1542,6 @@ async function computeImageHashHex(filePath, fileObj) {
   }
 }
 
-@keyframes dotBlink {
-
-  0%,
-  100% {
-    transform: translateY(-50%) scale(.9);
-  }
-
-  50% {
-    transform: translateY(-50%) scale(1.15);
-  }
-}
 
 /* 5. 微型纳米环 Spinner */
 .nano-spinner {

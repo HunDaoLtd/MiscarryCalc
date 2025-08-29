@@ -6,11 +6,11 @@ from common.decrypt import decrypt_db_data
 from mysql_op import DatabaseManager
 from contextlib import contextmanager
 from werkzeug.exceptions import HTTPException
+from werkzeug.utils import secure_filename
 import os
 import json
 import base64
 from openai import OpenAI
-import logging
 # from pypushdeer import PushDeer
 
 # pushdeer = PushDeer()
@@ -60,7 +60,11 @@ def get_db_connection():
     )
     try:
         db.connect()
-        yield db
+        yield db    # 执行 with 语句块
+        db.commit()   # 正常执行完，提交事务
+    except Exception as e:
+        db.rollback() # 出错时回滚事务
+        raise e
     finally:
         db.close()
 
@@ -87,6 +91,8 @@ def handle_exception(e):
 
 @app.route("/images/<filename>", methods=["GET", "POST", "PUT", "OPTIONS"])
 def upload_images(filename):
+    # 对传入文件名进行安全处理，避免目录穿越
+    filename = secure_filename(filename)
     # 处理预检请求
     if request.method == "OPTIONS":
         return jsonify({"status": "preflight"}), 200
@@ -145,6 +151,8 @@ def upload_images(filename):
 
 @app.route("/analysis/<filename>", methods=["GET"])
 def analyze_image(filename):
+    # 安全处理文件名
+    filename = secure_filename(filename)
     # 方式1: 通过查询参数 ?force=1 或 ?force=true
     force = request.args.get("force", "").lower() in ("1", "true", "yes")
     # 方式2: 通过请求头 X-Force-Analyze: true
@@ -154,7 +162,7 @@ def analyze_image(filename):
     if not filename:
         abort(400, description="Invalid filename provided")
     file_path = os.path.join(UPLOAD_DIR, filename)
-    hash = filename.split(".")[0]  # 文件名格式为 hash.ext
+    hash = filename.rsplit(".", 1)[0]  # 文件名格式为 hash.ext
 
     # 检查文件是否存在（更快、更省资源）
     if not os.path.exists(file_path):
@@ -315,7 +323,6 @@ def process_image_analysis(file_path, filename):
         }
         with get_db_connection() as db:
             db.insert_or_update_data(db.miscarry_calc_data_table, data)
-            db.commit()
         return jsonify(result_json)
     except Exception as e:
         app.logger.error(f"JSON 解析失败: {e}, 原始输出: {response.output_text}")
@@ -329,6 +336,28 @@ def process_image_analysis(file_path, filename):
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
+
+
+@app.post("/visit")
+def visit():
+    try:
+        with get_db_connection() as db:
+            db.incr_total_visit(1)
+        return ("", 204)
+    except Exception as e:
+        return jsonify({"error": "metrics visit failed"}), 500
+
+
+@app.get("/metrics")
+def metrics():
+    try:
+        with get_db_connection() as db:
+            total = int(db.get_total_visit() or 0)
+            analyses = int(db.get_total_analysis_count() or 0)
+            # 为兼容旧前端，保留 total 字段；新增 analyses 字段用于累计分析次数
+            return jsonify({"total": total, "analyses": analyses})
+    except Exception as e:
+        return jsonify({"error": "metrics failed"}), 500
 
 
 if __name__ == "__main__":

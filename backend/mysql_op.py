@@ -17,6 +17,7 @@ class DatabaseManager:
         self.charset = charset
         self.connection = None
         self.miscarry_calc_data_table = "miscarry_calc_data"
+        self.metrics_counter_table = "metrics_counter"
 
     def connect(self):
         """建立数据库连接。"""
@@ -87,11 +88,13 @@ class DatabaseManager:
 
     def commit(self):
         """提交事务。"""
-        self.connection.commit()
+        if self.connection:
+            self.connection.commit()
 
     def rollback(self):
         """回滚事务。"""
-        self.connection.rollback()
+        if self.connection:
+            self.connection.rollback()
 
     def insert_data(self, table, data):
         """
@@ -202,10 +205,43 @@ class DatabaseManager:
         """
         self.execute_query(sql)
 
+    def create_metrics_counter_if_not_exist(self):
+        sql = f"""
+        CREATE TABLE IF NOT EXISTS `{self.metrics_counter_table}` (
+            `id` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+            `total` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='累计访问计数';
+        """
+        self.execute_query(sql)
+
+    def incr_total_visit(self, n=1):
+        sql = f"""
+        INSERT INTO `{self.metrics_counter_table}` (`id`, `total`)
+        VALUES (1, %s)
+        ON DUPLICATE KEY UPDATE `total` = `total` + VALUES(`total`);
+        """
+        self.execute_query(sql, (int(n),))
+
+    def get_total_visit(self):
+        sql = f"SELECT `total` AS total FROM `{self.metrics_counter_table}` WHERE `id`=1"
+        row = self.fetch_one(sql)
+        return (row or {}).get("total", 0)
+
     def get_data_by_hash(self, hash):
         sql = f"SELECT * FROM {self.miscarry_calc_data_table} WHERE hash = %s"
         result = self.fetch_one(sql, (hash,))
         return result
+
+    def get_total_analysis_count(self):
+        """返回累计分析次数：按自增主键最大值估算（包含重新分析导致的ID增长）。"""
+        try:
+            sql = f"SELECT COALESCE(MAX(`id`), 0) AS max_id FROM `{self.miscarry_calc_data_table}`"
+            row = self.fetch_one(sql)
+            return int((row or {}).get("max_id", 0))
+        except Exception:
+            return 0
 
     @staticmethod
     def _deserialize_json_fields(result):
