@@ -139,9 +139,13 @@ def upload_images(filename):
         file = request.files["file"]
         try:
             file.save(file_path)
+            # # pushdeer 通知
+            # with get_db_connection() as db:
+            #     total = int(db.get_total_visit() or 0)
+            #     analyses = int(db.get_total_analysis_count() or 0)
             # pushdeer.send_markdown(
-            #     "MiscarryCalc",
-            #     desp="# 有文件上传\n**optional** description in markdown",
+            #     "MiscarryCalc有上传",
+            #     desp=f"## 累计访问: {total}      累计分析: {analyses}",
             # )
             return jsonify({"success": True}), 200
         except Exception as e:
