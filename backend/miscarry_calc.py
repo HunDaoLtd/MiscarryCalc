@@ -11,10 +11,9 @@ import os
 import json
 import base64
 from openai import OpenAI
+from pypushdeer import PushDeer
 
-# from pypushdeer import PushDeer
-
-# pushdeer = PushDeer()
+pushdeer = PushDeer()
 
 
 # 获取一个日志记录器实例
@@ -134,14 +133,16 @@ def upload_images(filename):
         file = request.files["file"]
         try:
             file.save(file_path)
-            # # pushdeer 通知
-            # with get_db_connection() as db:
-            #     total = int(db.get_total_visit() or 0)
-            #     analyses = int(db.get_total_analysis_count() or 0)
-            # pushdeer.send_markdown(
-            #     "MiscarryCalc有上传",
-            #     desp=f"## 累计访问: {total}      累计分析: {analyses}",
-            # )
+
+            # pushdeer 通知
+            with get_db_connection() as db:
+                total = int(db.get_total_visit() or -1) + 1
+                analyses = int(db.get_total_analysis_count() or 0)
+            pushdeer.send_markdown(
+                "MiscarryCalc有上传",
+                desp=f"## 累计访问: {total}      累计分析: {analyses}",
+            )
+
             return jsonify({"success": True}), 200
         except Exception as e:
             app.logger.error(f"Failed to save file {filename}: {e}")
