@@ -11,6 +11,7 @@ import os
 import json
 import base64
 from openai import OpenAI
+
 # from pypushdeer import PushDeer
 
 # pushdeer = PushDeer()
@@ -24,9 +25,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-client = OpenAI(
-    api_key=os.environ["ENV_METACHAT_API_KEY"], base_url="https://llm-api.mmchat.xyz/v1"
-)
+client = OpenAI(api_key=os.environ["ENV_METACHAT_API_KEY"], base_url="https://llm-api.mmchat.xyz/v1")
 
 UPLOAD_DIR = "/var/hundao/apps/1_miscarry_calc/images"  # 用于上传超声图
 
@@ -55,15 +54,13 @@ db_info = decrypt_db_data("1_miscarry_calc")
 @contextmanager
 def get_db_connection():
     global db_info
-    db = DatabaseManager(
-        host=db_info[2], user=db_info[0], password=db_info[1], db=db_info[3]
-    )
+    db = DatabaseManager(host=db_info[2], user=db_info[0], password=db_info[1], db=db_info[3])
     try:
         db.connect()
-        yield db    # 执行 with 语句块
-        db.commit()   # 正常执行完，提交事务
+        yield db  # 执行 with 语句块
+        db.commit()  # 正常执行完，提交事务
     except Exception as e:
-        db.rollback() # 出错时回滚事务
+        db.rollback()  # 出错时回滚事务
         raise e
     finally:
         db.close()
@@ -105,9 +102,7 @@ def upload_images(filename):
         if not os.path.exists(file_path):
             # 文件不存在 - 设置不缓存
             response = jsonify({"error": "File not found"}), 404
-            response.headers["Cache-Control"] = (
-                "no-store, no-cache, must-revalidate, max-age=0"
-            )
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
             return response
@@ -223,8 +218,9 @@ def process_image_analysis(file_path, filename):
 }
 """
     response = client.responses.create(
+        model="gpt-5.4-mini",
         # model="gpt-4.1",
-        model="gpt-5-mini",
+        # model="gpt-5-mini",
         # model="gpt-5-nano",
         input=[
             {
@@ -297,11 +293,7 @@ def process_image_analysis(file_path, filename):
         elif isinstance(miscarry_raw, (int, float)):
             miscarry = 1 if miscarry_raw else 0
         elif isinstance(miscarry_raw, str):
-            miscarry = (
-                1
-                if miscarry_raw.strip().lower() in ("true", "1", "是", "停育", "yes")
-                else 0
-            )
+            miscarry = 1 if miscarry_raw.strip().lower() in ("true", "1", "是", "停育", "yes") else 0
         else:
             miscarry = None
 
