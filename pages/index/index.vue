@@ -300,7 +300,7 @@
       <view class="footer-line" @click="openExternal('https://zhuanlan.zhihu.com/p/18132159339')">
         <text class="footer-link">3、自然流产科普知识点我。</text>
       </view>
-      <text class="footer-line meta">© 2025 魂道 MiscarryCalc · V 1.3.0</text>
+      <text class="footer-line meta">© 2025 魂道 MiscarryCalc · V 1.3.1</text>
     </view>
   </view>
 </template>
